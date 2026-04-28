@@ -32,6 +32,22 @@ Docker Usage:
   `);
 }
 
+// Fetch IP using a single URL promise
+function fetchIp(url) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { timeout: 2000 }, (res) => {
+      let ip = "";
+      res.on("data", (chunk) => (ip += chunk));
+      res.on("end", () => resolve(ip.trim()));
+    });
+    req.on("timeout", () => {
+      req.destroy();
+      reject("timeout");
+    });
+    req.on("error", () => reject("error"));
+  });
+}
+
 // Resilient multi-provider IP fetcher
 async function getPublicIp() {
   const providers = [
@@ -66,7 +82,11 @@ function detectOS() {
       uninstall: `${sudo}apk del squid apache2-utils`,
       fwAdd: () => `echo "🛡️ Firewall handled by Docker or host system."`,
       fwRemove: () => `echo "🛡️ Firewall handled by Docker or host system."`,
-      restart: `${sudo}rc-service squid restart 2>/dev/null || ${sudo}squid -k reconfigure 2>/dev/null || true`,
+      // Alpine dynamically uses Squid commands directly, ignoring systemctl
+      restart: `${sudo}squid -k reconfigure 2>/dev/null || ${sudo}rc-service squid restart 2>/dev/null || true`,
+      start: `${sudo}squid 2>/dev/null || ${sudo}rc-service squid start 2>/dev/null || true`,
+      stop: `${sudo}squid -k shutdown 2>/dev/null || ${sudo}rc-service squid stop 2>/dev/null || true`,
+      status: `${sudo}squid -k check 2>/dev/null`,
     };
   }
 
@@ -78,6 +98,9 @@ function detectOS() {
       fwAdd: (port) => `${sudo}ufw allow ${port}/tcp`,
       fwRemove: (port) => `${sudo}ufw delete allow ${port}/tcp`,
       restart: `${sudo}systemctl restart squid && ${sudo}systemctl enable squid`,
+      start: `${sudo}systemctl start squid`,
+      stop: `${sudo}systemctl stop squid`,
+      status: `${sudo}systemctl is-active squid`,
     };
   }
 
@@ -92,12 +115,14 @@ function detectOS() {
       family: "rhel",
       install: `${sudo}dnf install -y squid httpd-tools firewalld || ${sudo}yum install -y squid httpd-tools firewalld`,
       uninstall: `${sudo}dnf remove -y squid httpd-tools || ${sudo}yum remove -y squid httpd-tools`,
-      // Critically adds SSH service before starting Firewalld to prevent remote lockouts
       fwAdd: (port) =>
         `${sudo}systemctl enable firewalld && ${sudo}systemctl start firewalld && ${sudo}firewall-cmd --permanent --add-service=ssh >/dev/null 2>&1 && ${sudo}firewall-cmd --permanent --add-port=${port}/tcp && ${sudo}firewall-cmd --reload`,
       fwRemove: (port) =>
         `${sudo}firewall-cmd --permanent --remove-port=${port}/tcp && ${sudo}firewall-cmd --reload`,
       restart: `${sudo}systemctl restart squid && ${sudo}systemctl enable squid`,
+      start: `${sudo}systemctl start squid`,
+      stop: `${sudo}systemctl stop squid`,
+      status: `${sudo}systemctl is-active squid`,
     };
   }
 
@@ -136,7 +161,6 @@ if (!command) {
         run("touch /etc/squid/passwords");
         run(`htpasswd -b -c /etc/squid/passwords ${user} ${pass}`);
 
-        // Dynamically find NCSA path for Alpine resilience
         const setupAuth = `AUTH_PATH=$(find /usr/lib/squid /usr/lib64/squid /usr/libexec/squid -name basic_ncsa_auth 2>/dev/null | head -n 1)
 cat <<EOF > /etc/squid/squid.conf
 http_port ${port}
@@ -149,13 +173,9 @@ EOF`;
 
         console.log("\n🔥 Starting Squid in foreground...");
 
-        // Add -N to prevent background fork, and Node will wait for it to finish
         run("squid -N -z 2>/dev/null || true");
-
-        // Wipe any stale PID lock files just to be 100% bulletproof
         run("rm -f /var/run/squid*.pid /run/squid*.pid 2>/dev/null || true");
 
-        // Start the main server
         require("child_process").execSync("squid -N -d 1", {
           stdio: "inherit",
         });
@@ -184,7 +204,6 @@ EOF`;
 
         console.log("\n⚙️  3/4 Configuring Port & Rules...");
 
-        // 2>/dev/null prevents ugly grep errors on a fresh VPS setup
         const setupAuth = `${sudo}grep -q "auth_param basic" /etc/squid/squid.conf 2>/dev/null || ${sudo}bash -c '
 AUTH_PATH=$(find /usr/lib/squid /usr/lib64/squid /usr/libexec/squid -name basic_ncsa_auth 2>/dev/null | head -n 1)
 cat <<EOF > /etc/squid/squid.conf
@@ -239,37 +258,51 @@ EOF'`;
       }
 
       case "list": {
-        console.log("\n🦊 ProxyFoxy - Active Configuration\n");
+        console.log("\n🦊 ProxyFoxy - Active Configuration");
+        console.log("═══════════════════════════════════════════\n");
+
+        let users = [];
         if (fs.existsSync("/etc/squid/passwords")) {
-          const users = fs
+          users = fs
             .readFileSync("/etc/squid/passwords", "utf8")
             .split("\n")
             .filter(Boolean)
             .map((line) => line.split(":")[0]);
-          console.log(
-            `👥 Users (${users.length}):\n   - ${users.join("\n   - ")}`,
-          );
-        } else {
-          console.log("👥 Users: None configured.");
         }
 
+        if (users.length > 0) {
+          console.log(`👥 USERS (${users.length}):`);
+          users.forEach((u) => console.log(`   ✅ ${u}`));
+        } else {
+          console.log("👥 USERS: None configured.");
+        }
+
+        let ports = [];
         if (fs.existsSync("/etc/squid/squid.conf")) {
-          const ports = fs
+          ports = fs
             .readFileSync("/etc/squid/squid.conf", "utf8")
             .split("\n")
             .filter((line) => line.startsWith("http_port "))
             .map((line) => line.split(" ")[1]);
-          console.log(
-            `\n🔌 Open Ports (${ports.length}):\n   - ${ports.join("\n   - ")}\n`,
-          );
         }
+
+        if (ports.length > 0) {
+          console.log(`\n🔌 OPEN PORTS (${ports.length}):`);
+          ports.forEach((p) => console.log(`   🌐 ${p}`));
+        } else {
+          console.log(`\n🔌 OPEN PORTS: None configured.`);
+        }
+
+        console.log("\n💡 Format: IP_ADDRESS:PORT:USER:PASSWORD");
+        console.log("═══════════════════════════════════════════\n");
         break;
       }
 
       case "status": {
         console.log(`📊 Checking proxy status...`);
         try {
-          run("systemctl is-active squid", false);
+          // Relies on exit code. Both systemctl and squid return 0 if active.
+          run(osInfo.status, false);
           console.log(`✅ Service is actively running.`);
         } catch (e) {
           console.log(`❌ Service is stopped or not installed.`);
@@ -279,14 +312,18 @@ EOF'`;
 
       case "stop": {
         console.log(`🛑 Stopping proxy service...`);
-        run("sudo systemctl stop squid");
+        try {
+          run(osInfo.stop);
+        } catch (e) {}
         console.log(`✅ Proxy service stopped.`);
         break;
       }
 
       case "start": {
         console.log(`🟢 Starting proxy service...`);
-        run("sudo systemctl start squid");
+        try {
+          run(osInfo.start);
+        } catch (e) {}
         console.log(`✅ Proxy service started.`);
         break;
       }
@@ -294,10 +331,14 @@ EOF'`;
       case "uninstall": {
         console.log(`⚠️  WARNING: Completely removing proxy server...`);
         try {
-          run("sudo systemctl stop squid", false);
+          run(osInfo.stop, false);
         } catch (e) {}
-        run(osInfo.uninstall);
-        run(`${sudo}rm -rf /etc/squid`);
+        try {
+          run(osInfo.uninstall);
+        } catch (e) {}
+        try {
+          run(`${sudo}rm -rf /etc/squid`);
+        } catch (e) {}
         console.log(`✅ Proxy server has been wiped from this machine.`);
         break;
       }
