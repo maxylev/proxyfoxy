@@ -34,15 +34,37 @@ _(By default, this installs a standard HTTP web proxy)._
 
 You can specify the protocol flag to deploy different proxy architectures natively:
 
-- **HTTP (Squid):** `npx proxyfoxy add myuser mypass 8000 http`
-- **SOCKS5 (Dante):** `npx proxyfoxy add myuser mypass 8001 socks5`
-- **MTProto (Telegram):** `npx proxyfoxy add myuser skip 8002 mtproto`
+#### HTTP (Squid)
+
+```bash
+npx proxyfoxy add myuser mypass 8000 http
+```
+
+<p align="center"><img src="https://raw.githubusercontent.com/maxylev/proxyfoxy/refs/heads/main/assets/proxyfoxy-http.svg" alt="HTTP Proxy Architecture" width="720"></p>
+
+#### SOCKS5 (Dante)
+
+```bash
+npx proxyfoxy add myuser mypass 8001 socks5
+```
+
+<p align="center"><img src="https://raw.githubusercontent.com/maxylev/proxyfoxy/refs/heads/main/assets/proxyfoxy-socks5.svg" alt="SOCKS5 Proxy Architecture" width="720"></p>
+
+#### MTProto (Telegram)
+
+```bash
+npx proxyfoxy add myuser skip 8002 mtproto
+```
+
+<p align="center"><img src="https://raw.githubusercontent.com/maxylev/proxyfoxy/refs/heads/main/assets/proxyfoxy-mtproto.svg" alt="MTProto Proxy Architecture" width="720"></p>
 
 ---
 
 ## 🏠 The Residential Relay Network
 
 ProxyFoxy allows you to create your own distributed residential proxy pool (similar to BrightData or Honeygain). Home PCs connect to your Master VPS and donate their IPs. Consumers connect to your VPS, which invisibly relays the traffic to the Home PC.
+
+<p align="center"><img src="https://raw.githubusercontent.com/maxylev/proxyfoxy/refs/heads/main/assets/proxyfoxy-residential.svg" alt="Residential Proxy Architecture" width="840"></p>
 
 **1. Create a Master Node on your VPS**
 You can specify a required country code (`--country=XX`) and a strict data limit (`--limit=XGB`). If the data limit is hit, connections are instantly severed.
@@ -56,13 +78,13 @@ Anyone can run this locally to inject themselves into the proxy pool. ProxyFoxy 
 
 ```bash
 npx proxyfoxy provider res_user:res_pass@<VPS_IP>:9000
-```
 
-##### How to run it in the background / on boot?
+# Suppress reconnect messages (useful for Docker / PM2 / systemd)
+npx proxyfoxy provider res_user:res_pass@<VPS_IP>:9000 --quiet
 
-```bash
-npm install -g pm2
-pm2 start "npx proxyfoxy provider user:pass@ip:9000" --name "proxy-exit-node"
+# Run it in the background / on boot
+npm install -g pm2 && \
+pm2 start "npx proxyfoxy provider user:pass@ip:9000" --name "proxy-exit-node" --quiet && \
 pm2 startup
 ```
 
@@ -92,9 +114,30 @@ Manage multiple proxies and track bandwidth dynamically.
 If you prefer containers, ProxyFoxy has an optimized Alpine-based Docker image available.
 
 ```bash
-# Run SOCKS5 Proxy dynamically
+# Run HTTP Proxy
+docker run -d -p 8000:8000 --name http-proxy ghcr.io/maxylev/proxyfoxy:latest myuser mypass 8000 http
+
+# Run SOCKS5 Proxy
 docker run -d -p 8001:8001 --name socks-proxy ghcr.io/maxylev/proxyfoxy:latest myuser mypass 8001 socks5
+
+# Run MTProto Proxy
+docker run -d -p 8002:8002 --name mtproto-proxy ghcr.io/maxylev/proxyfoxy:latest myuser mtpass 8002 mtproto
+
+# Run Residential Master
+docker run -d -p 8003:8003 -p 9000:9000 --name residential-proxy ghcr.io/maxylev/proxyfoxy:latest res_user res_pass 8003 residential
 ```
+
+---
+
+## 🧪 End-to-End Testing
+
+ProxyFoxy includes a full Docker-based E2E test suite that validates all protocols, traffic analytics, data limits, password hot-reloading, and the complete residential relay flow.
+
+```bash
+cd e2e && docker compose up --build --abort-on-container-exit
+```
+
+The suite spins up a **Server** container (runs all proxy services) and a **Provider** container (simulates a Home PC exit node), then runs a comprehensive test battery covering every CLI command and network flow.
 
 ---
 

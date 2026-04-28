@@ -1,4 +1,4 @@
-name: Functional E2E Tests
+name: E2E Tests
 
 on:
   push:
@@ -7,61 +7,16 @@ on:
     branches: ["main"]
 
 jobs:
-  test-proxies:
-    name: Test Proxy Architectures
+  e2e:
+    name: Proxy E2E Tests
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24.x"
+      - name: Run E2E suite
+        run: cd e2e && docker compose up --build --abort-on-container-exit
 
-      - name: Install and Link ProxyFoxy
-        run: |
-          npm install
-          sudo npm link
-          sudo chmod +x index.js
-
-      - name: Run Basic Sanity Tests
-        run: npm test
-
-      - name: Test 1 - HTTP Proxy (Squid)
-        run: |
-          echo "Setting up HTTP Proxy..."
-          sudo proxyfoxy add testuser testpass 8080 http
-          sleep 3 # Wait for Squid daemon to initialize
-          echo "Testing HTTP connection via cURL..."
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -x http://testuser:testpass@127.0.0.1:8080 https://icanhazip.com)
-          if [ "$HTTP_STATUS" -ne 200 ]; then echo "HTTP Proxy Failed"; exit 1; fi
-          echo "✅ HTTP Proxy functional."
-
-      - name: Test 2 - SOCKS5 Proxy (Dante)
-        run: |
-          echo "Setting up SOCKS5 Proxy..."
-          sudo proxyfoxy add sockuser sockpass 1080 socks5
-          sleep 3 # Wait for Dante daemon to initialize
-          echo "Testing SOCKS5 connection via cURL..."
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --socks5-hostname sockuser:sockpass@127.0.0.1:1080 https://icanhazip.com)
-          if [ "$HTTP_STATUS" -ne 200 ]; then echo "SOCKS5 Proxy Failed"; exit 1; fi
-          echo "✅ SOCKS5 Proxy functional."
-
-      - name: Test 3 - Residential Master Gateway & Status
-        run: |
-          echo "Setting up Residential Master..."
-          sudo proxyfoxy add resuser respass 9090 residential --country=US --limit=1GB
-          sleep 2
-
-          echo "Checking Service Status Output..."
-          STATUS_OUT=$(sudo proxyfoxy status)
-          echo "$STATUS_OUT"
-          if [[ "$STATUS_OUT" != *"RUNNING"* ]]; then echo "Services are not running properly"; exit 1; fi
-
-      - name: Test 4 - Proxy Deletion & Cleanup
-        run: |
-          sudo proxyfoxy delete testuser 8080
-          sudo proxyfoxy delete sockuser 1080
-          sudo proxyfoxy uninstall
-          echo "✅ Cleanup Successful."
+      - name: Logs (on failure)
+        if: failure()
+        run: cd e2e && docker compose logs
