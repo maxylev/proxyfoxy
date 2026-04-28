@@ -1,0 +1,10 @@
+{
+  "name": "proxyfoxy",
+  "version": "1.0.0",
+  "description": "The ultimate 1-command proxy server manager",
+  "bin": {
+    "proxyfoxy": "./index.js"
+  },
+  "author": "Max Ymlev",
+  "license": "MIT"
+}
