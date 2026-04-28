@@ -55,8 +55,15 @@ Protocols Available:
   - residential (Routes traffic through distributed Home PCs)
 
 Residential Network:
-  npx proxyfoxy provider user:pass@vps-ip:9000  # Run on Exit Node (Home PC)
-  npx proxyfoxy provider user:pass@vps-ip:9000 --quiet  # Suppress reconnect messages
+  npx proxyfoxy provider <vps-ip>:9000              # Run on Exit Node (Home PC)
+  npx proxyfoxy provider <vps-ip>:9000 --quiet      # Suppress reconnect messages
+
+Provider Management (run on VPS):
+  npx proxyfoxy providers                           # List connected / blacklisted providers
+  npx proxyfoxy providers block <ip> [reason]       # Blacklist a provider IP
+  npx proxyfoxy providers unblock <ip>              # Remove IP from blacklist
+  npx proxyfoxy providers whitelist <ip>            # Add IP to whitelist (only these IPs allowed)
+  npx proxyfoxy providers unwhitelist <ip>          # Remove IP from whitelist
 
 Docker:
   docker run -d -p <port>:<port> ghcr.io/maxylev/proxyfoxy:latest <user> <pass> <port> [protocol]
@@ -85,6 +92,8 @@ if (
 
 const DB_PATH = "/etc/proxyfoxy.json";
 const STATE_PATH = "/var/run/proxyfoxy_state.json";
+const BLACKLIST_PATH = "/etc/proxyfoxy_blacklist.json";
+const WHITELIST_PATH = "/etc/proxyfoxy_whitelist.json";
 
 let db = { proxies: [] };
 try {
@@ -96,6 +105,38 @@ const saveDb = () => {
   fs.writeFileSync(tmpPath, JSON.stringify(db, null, 2));
   fs.renameSync(tmpPath, DB_PATH);
 };
+
+function loadBlacklist() {
+  try {
+    if (fs.existsSync(BLACKLIST_PATH))
+      return JSON.parse(fs.readFileSync(BLACKLIST_PATH, "utf8"));
+  } catch (e) {}
+  return {};
+}
+
+function saveBlacklist(list) {
+  try {
+    const tmp = `${BLACKLIST_PATH}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(list, null, 2));
+    fs.renameSync(tmp, BLACKLIST_PATH);
+  } catch (e) {}
+}
+
+function loadWhitelist() {
+  try {
+    if (fs.existsSync(WHITELIST_PATH))
+      return JSON.parse(fs.readFileSync(WHITELIST_PATH, "utf8"));
+  } catch (e) {}
+  return [];
+}
+
+function saveWhitelist(list) {
+  try {
+    const tmp = `${WHITELIST_PATH}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(list, null, 2));
+    fs.renameSync(tmp, WHITELIST_PATH);
+  } catch (e) {}
+}
 
 // -----------------------------------------------------------------
 // 🌐 UTILITIES & IP TRACKING
@@ -122,7 +163,9 @@ function formatBytes(bytes) {
 
 function validateUser(user) {
   if (!/^[a-zA-Z0-9_-]+$/.test(user)) {
-    console.error("\n❌ Invalid username. Only letters, numbers, underscores, and hyphens are allowed.\n");
+    console.error(
+      "\n❌ Invalid username. Only letters, numbers, underscores, and hyphens are allowed.\n",
+    );
     process.exit(1);
   }
 }
@@ -332,6 +375,38 @@ function serveResidentialMaster() {
   console.log("🚀 Starting Master Residential Daemon on port 9000...");
   let providers = [];
   const consumerServers = new Map();
+  const providerErrors = new Map();
+  const AUTO_BLACKLIST_THRESHOLD = 5;
+  const AUTO_BLACKLIST_WINDOW = 600000;
+
+  function isIpAllowed(ip) {
+    const blacklist = loadBlacklist();
+    if (blacklist[ip]) return false;
+    const whitelist = loadWhitelist();
+    if (whitelist.length > 0 && !whitelist.includes(ip)) return false;
+    return true;
+  }
+
+  function recordError(ip) {
+    const now = Date.now();
+    let record = providerErrors.get(ip);
+    if (!record || now - record.firstAt > AUTO_BLACKLIST_WINDOW) {
+      record = { count: 0, firstAt: now };
+      providerErrors.set(ip, record);
+    }
+    record.count++;
+    if (record.count >= AUTO_BLACKLIST_THRESHOLD) {
+      const blacklist = loadBlacklist();
+      if (!blacklist[ip]) {
+        blacklist[ip] = { reason: "auto", at: new Date().toISOString() };
+        saveBlacklist(blacklist);
+        providers.filter((p) => p.ipRaw === ip).forEach((p) => p.destroy());
+        console.log(
+          `⚠️  Auto-blacklisted provider ${ip} (${record.count} abrupt disconnects)`,
+        );
+      }
+    }
+  }
 
   function syncStateToFile() {
     const state = providers.map((p) => ({
@@ -383,6 +458,15 @@ function serveResidentialMaster() {
   setInterval(syncServers, 10000);
   syncServers();
 
+  setInterval(() => {
+    const blacklist = loadBlacklist();
+    if (Object.keys(blacklist).length > 0) {
+      providers.forEach((p) => {
+        if (blacklist[p.ipRaw]) p.destroy();
+      });
+    }
+  }, 1000);
+
   const gateway = net.createServer((socket) => {
     socket.rxBytes = 0;
     socket.txBytes = 0;
@@ -397,14 +481,17 @@ function serveResidentialMaster() {
     socket.once("data", async (data) => {
       socket.rxBytes += data.length;
       const authHeader = data.toString("utf8", 0, 100).split("\n")[0];
-      if (!authHeader.startsWith("PROVIDER ")) return socket.destroy();
+      if (!authHeader.startsWith("PROVIDER")) return socket.destroy();
 
       socket.ipRaw = socket.remoteAddress.replace(/^.*:/, "");
+      if (!isIpAllowed(socket.ipRaw)) return socket.destroy();
+
       const ipInfo = await getIpInfo(socket.ipRaw);
       socket.country = ipInfo.country_code || "UNKNOWN";
       socket.providerId = crypto.randomBytes(4).toString("hex");
       socket.connectedAt = new Date().toISOString();
       socket.targets = new Map();
+      socket.graceful = false;
 
       providers.push(socket);
       syncStateToFile();
@@ -417,6 +504,11 @@ function serveResidentialMaster() {
         buffer = lines.pop();
         for (let line of lines) {
           if (!line) continue;
+          if (line === "GRACEFUL_DISCONNECT") {
+            socket.graceful = true;
+            socket.destroy();
+            return;
+          }
           try {
             const msg = JSON.parse(line);
             const target = socket.targets.get(msg.id);
@@ -436,6 +528,7 @@ function serveResidentialMaster() {
         socket.targets.forEach((t) => t.destroy());
         socket.targets.clear();
         syncStateToFile();
+        if (!socket.graceful && socket.ipRaw) recordError(socket.ipRaw);
       };
 
       socket.on("error", cleanup);
@@ -512,7 +605,9 @@ function serveResidentialMaster() {
               JSON.stringify({ type: "connect", id, host, port: targetPort }) +
                 "\n",
             );
-            socket.write(Buffer.from([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]));
+            socket.write(
+              Buffer.from([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]),
+            );
           } catch (e) {
             return socket.destroy();
           }
@@ -551,19 +646,33 @@ function serveResidentialMaster() {
 // -----------------------------------------------------------------
 // 🔌 PROVIDER CLIENT (Home PC Exit Node)
 // -----------------------------------------------------------------
-function runProviderClient(host, port, user, pass, quiet) {
+function runProviderClient(host, port, quiet) {
   let targets = new Map();
+  let activeSocket = null;
 
   function log(msg) {
     if (!quiet) console.log(msg);
   }
 
+  function gracefulShutdown() {
+    if (activeSocket && !activeSocket.destroyed) {
+      try {
+        activeSocket.write("GRACEFUL_DISCONNECT\n");
+      } catch (e) {}
+    }
+    setTimeout(() => process.exit(0), 500);
+  }
+
+  process.on("SIGTERM", gracefulShutdown);
+  process.on("SIGINT", gracefulShutdown);
+
   function connect() {
     log(`\n⏳ Connecting to Master Gateway at ${host}:${port}...`);
     const ws = net.createConnection({ host, port }, () => {
       console.log("✅ Connected! Proxying traffic globally...");
-      ws.write(`PROVIDER ${user}:${pass}\n`);
+      ws.write("PROVIDER\n");
     });
+    activeSocket = ws;
 
     let buffer = "";
     ws.on("data", (chunk) => {
@@ -633,21 +742,103 @@ function runProviderClient(host, port, user, pass, quiet) {
         break;
 
       case "provider": {
-        let pUser, pPass, pIp, pPort;
         const pQuiet = args.includes("--quiet");
         const pArgs = args.filter((a) => a !== "--quiet");
-        if (pArgs.length === 1 && pArgs[0].includes("@")) {
-          const [cred, loc] = pArgs[0].split("@");
-          [pUser, pPass] = cred.split(":");
-          [pIp, pPort] = loc.split(":");
-        } else if (pArgs.length === 4) {
-          [pUser, pPass, pIp, pPort] = pArgs;
+        let pIp, pPort;
+        if (pArgs.length === 1 && pArgs[0].includes(":")) {
+          [pIp, pPort] = pArgs[0].split(":");
+        } else if (pArgs.length === 2) {
+          [pIp, pPort] = pArgs;
         } else {
           return console.log(
-            "\n❌ Usage: proxyfoxy provider user:pass@ip:port [--quiet]\n",
+            "\n❌ Usage: proxyfoxy provider <ip>:<port> [--quiet]\n",
           );
         }
-        runProviderClient(pIp, pPort, pUser, pPass, pQuiet);
+        runProviderClient(pIp, pPort, pQuiet);
+        break;
+      }
+
+      case "providers": {
+        const sub = args[0];
+        if (sub === "block") {
+          const ip = args[1];
+          if (!ip)
+            return console.log("\n❌ Usage: proxyfoxy providers block <ip>\n");
+          const list = loadBlacklist();
+          list[ip] = {
+            reason: args.slice(2).join(" ") || "manual",
+            at: new Date().toISOString(),
+          };
+          saveBlacklist(list);
+          console.log(`\n✅ Blocked provider ${ip}.\n`);
+        } else if (sub === "unblock") {
+          const ip = args[1];
+          if (!ip)
+            return console.log(
+              "\n❌ Usage: proxyfoxy providers unblock <ip>\n",
+            );
+          const list = loadBlacklist();
+          delete list[ip];
+          saveBlacklist(list);
+          console.log(`\n✅ Unblocked provider ${ip}.\n`);
+        } else if (sub === "whitelist") {
+          const ip = args[1];
+          if (!ip)
+            return console.log(
+              "\n❌ Usage: proxyfoxy providers whitelist <ip>\n",
+            );
+          const list = loadWhitelist();
+          if (!list.includes(ip)) list.push(ip);
+          saveWhitelist(list);
+          console.log(`\n✅ Added ${ip} to whitelist.\n`);
+        } else if (sub === "unwhitelist") {
+          const ip = args[1];
+          if (!ip)
+            return console.log(
+              "\n❌ Usage: proxyfoxy providers unwhitelist <ip>\n",
+            );
+          const list = loadWhitelist().filter((i) => i !== ip);
+          saveWhitelist(list);
+          console.log(`\n✅ Removed ${ip} from whitelist.\n`);
+        } else {
+          let resState = [];
+          try {
+            resState = JSON.parse(fs.readFileSync(STATE_PATH, "utf8"));
+          } catch (e) {}
+          const blacklist = loadBlacklist();
+          const whitelist = loadWhitelist();
+
+          console.log(`\n🏠 PROVIDER MANAGEMENT`);
+          console.log(`════════════════════════════════════════════`);
+
+          if (resState.length > 0) {
+            console.log(`\n🟢 Connected (${resState.length}):`);
+            resState.forEach((p) =>
+              console.log(
+                `   ├─ ${p.ip} [${p.country}] since ${p.connectedAt}`,
+              ),
+            );
+          } else {
+            console.log(`\n🔴 No providers connected.`);
+          }
+
+          const blEntries = Object.entries(blacklist);
+          if (blEntries.length > 0) {
+            console.log(`\n🚫 Blacklisted (${blEntries.length}):`);
+            blEntries.forEach(([ip, info]) =>
+              console.log(`   ├─ ${ip} — ${info.reason} (${info.at})`),
+            );
+          }
+
+          if (whitelist.length > 0) {
+            console.log(`\n✅ Whitelist (${whitelist.length}):`);
+            whitelist.forEach((ip) => console.log(`   ├─ ${ip}`));
+          }
+
+          console.log(
+            `\n══════════════════════════════════════════════════════════\n`,
+          );
+        }
         break;
       }
 
@@ -679,7 +870,9 @@ function runProviderClient(host, port, user, pass, quiet) {
                 : "squid httpd-tools firewalld",
           );
           run(`mkdir -p /etc/squid && touch /etc/squid/passwords`);
-          run(`htpasswd -b /etc/squid/passwords ${shellEscape(user)} ${shellEscape(pass)}`);
+          run(
+            `htpasswd -b /etc/squid/passwords ${shellEscape(user)} ${shellEscape(pass)}`,
+          );
 
           const setupAuth = `AUTH_PATH=$(find /usr/lib/squid /usr/lib64/squid /usr/libexec/squid -name basic_ncsa_auth 2>/dev/null | head -n 1)\ncat <<EOF > /etc/squid/squid.conf\nauth_param basic program $AUTH_PATH /etc/squid/passwords\nacl authenticated proxy_auth REQUIRED\nhttp_access allow authenticated\nhttp_access deny all\nEOF`;
           run(
@@ -701,9 +894,12 @@ function runProviderClient(host, port, user, pass, quiet) {
             osInfo.isDebian ? "dante-server ufw" : "dante-server firewalld",
           );
 
-          if (osInfo.isAlpine) run(`adduser -H -D ${shellEscape(user)} 2>/dev/null || true`);
+          if (osInfo.isAlpine)
+            run(`adduser -H -D ${shellEscape(user)} 2>/dev/null || true`);
           else
-            run(`useradd -M -s /usr/sbin/nologin ${shellEscape(user)} 2>/dev/null || true`);
+            run(
+              `useradd -M -s /usr/sbin/nologin ${shellEscape(user)} 2>/dev/null || true`,
+            );
           run(`echo ${shellEscape(user)}:${shellEscape(pass)} | chpasswd`);
 
           let extIf = "eth0";
@@ -736,9 +932,7 @@ function runProviderClient(host, port, user, pass, quiet) {
             run(
               `mv /tmp/mtg-*/mtg /usr/local/bin/mtg && chmod +x /usr/local/bin/mtg`,
             );
-            mtgSecret = execSync(
-              "/usr/local/bin/mtg generate-secret tls",
-            )
+            mtgSecret = execSync("/usr/local/bin/mtg generate-secret tls")
               .toString()
               .trim();
             pass = mtgSecret;
@@ -780,7 +974,7 @@ function runProviderClient(host, port, user, pass, quiet) {
             `   🌐 Proxy: \x1b[32m${user}:${pass}@${ip}:${port}\x1b[0m`,
           );
           console.log(
-            `   🏠 Home PC string: \x1b[36mnpx proxyfoxy provider ${user}:${pass}@${ip}:9000\x1b[0m\n`,
+            `   🏠 Home PC string: \x1b[36mnpx proxyfoxy provider ${ip}:9000\x1b[0m\n`,
           );
         } else {
           console.log(
@@ -810,9 +1004,13 @@ function runProviderClient(host, port, user, pass, quiet) {
             updated = true;
             updatedTypes.add(p.type);
             if (p.type === "http")
-              runQuiet(`htpasswd -b /etc/squid/passwords ${shellEscape(user)} ${shellEscape(newpass)}`);
+              runQuiet(
+                `htpasswd -b /etc/squid/passwords ${shellEscape(user)} ${shellEscape(newpass)}`,
+              );
             if (p.type === "socks5")
-              runQuiet(`echo ${shellEscape(user)}:${shellEscape(newpass)} | chpasswd`);
+              runQuiet(
+                `echo ${shellEscape(user)}:${shellEscape(newpass)} | chpasswd`,
+              );
           }
         });
 
@@ -922,21 +1120,34 @@ function runProviderClient(host, port, user, pass, quiet) {
         if (resState.length > 0) {
           console.log(`\n🏠 RESIDENTIAL PROVIDER POOL:`);
           const byCountry = {};
+          let totalRx = 0, totalTx = 0;
           resState.forEach((node) => {
             if (!byCountry[node.country])
               byCountry[node.country] = { nodes: [], rx: 0, tx: 0 };
-            byCountry[node.country].nodes.push(node.ip);
+            byCountry[node.country].nodes.push(node);
             byCountry[node.country].rx += node.rx;
             byCountry[node.country].tx += node.tx;
+            totalRx += node.rx;
+            totalTx += node.tx;
           });
 
           for (const [country, stats] of Object.entries(byCountry)) {
-            console.log(`   🌍 ${country}: ${stats.nodes.length} Nodes Active`);
-            console.log(`      ├─ IPs: ${stats.nodes.join(", ")}`);
             console.log(
-              `      └─ Traffic: ${formatBytes(stats.rx)} IN / ${formatBytes(stats.tx)} OUT`,
+              `   🌍 ${country}: ${stats.nodes.length} Node${stats.nodes.length > 1 ? "s" : ""} Active`,
+            );
+            stats.nodes.forEach((n, i) => {
+              const prefix = i < stats.nodes.length - 1 ? "├─" : "├─";
+              console.log(
+                `      ${prefix} ${n.ip} — ${formatBytes(n.rx)} IN / ${formatBytes(n.tx)} OUT`,
+              );
+            });
+            console.log(
+              `      └─ Subtotal: ${formatBytes(stats.rx)} IN / ${formatBytes(stats.tx)} OUT`,
             );
           }
+          console.log(
+            `\n   📊 Total: ${resState.length} Node${resState.length > 1 ? "s" : ""} — ${formatBytes(totalRx)} IN / ${formatBytes(totalTx)} OUT`,
+          );
         }
         console.log(
           `══════════════════════════════════════════════════════════\n`,
@@ -995,7 +1206,11 @@ function runProviderClient(host, port, user, pass, quiet) {
             );
           else osInfo.service("restart", "squid");
         } else if (proxy.type === "socks5") {
-          runQuiet(osInfo.isAlpine ? `deluser ${shellEscape(user)}` : `userdel ${shellEscape(user)}`);
+          runQuiet(
+            osInfo.isAlpine
+              ? `deluser ${shellEscape(user)}`
+              : `userdel ${shellEscape(user)}`,
+          );
           osInfo.service("restart", osInfo.isDebian ? "danted" : "sockd");
         } else if (proxy.type === "mtproto" || proxy.type === "residential") {
           const svcName =
@@ -1065,7 +1280,9 @@ function runProviderClient(host, port, user, pass, quiet) {
         if (command === "docker") {
           const [dUser, dPass, dPort, dProto] = args;
           if (!dUser || !dPass || !dPort) {
-            console.log("\n❌ Usage: docker run ... proxyfoxy <user> <pass> <port> [protocol]\n");
+            console.log(
+              "\n❌ Usage: docker run ... proxyfoxy <user> <pass> <port> [protocol]\n",
+            );
             process.exit(1);
           }
           validateUser(dUser);
@@ -1077,7 +1294,9 @@ function runProviderClient(host, port, user, pass, quiet) {
 
           if (protocol === "http") {
             run("mkdir -p /etc/squid && touch /etc/squid/passwords");
-            run(`htpasswd -b -c /etc/squid/passwords ${shellEscape(dUser)} ${shellEscape(dPass)}`);
+            run(
+              `htpasswd -b -c /etc/squid/passwords ${shellEscape(dUser)} ${shellEscape(dPass)}`,
+            );
             run(
               `sh -c 'AUTH_PATH=$(find /usr/lib/squid /usr/lib64/squid /usr/libexec/squid -name basic_ncsa_auth 2>/dev/null | head -n 1)\ncat <<EOF > /etc/squid/squid.conf\nhttp_port ${dPort}\nauth_param basic program $AUTH_PATH /etc/squid/passwords\nacl authenticated proxy_auth REQUIRED\nhttp_access allow authenticated\nhttp_access deny all\nEOF'`,
             );

@@ -39,9 +39,9 @@
     .ip-bg-res { fill: #16a34a; }
     .ip-bg-target { fill: #059669; }
     .ip-text { fill: #ffffff; }
-    .badge-text { fill: #fbbf24; }
-    .badge-text-purple { fill: #a78bfa; }
-    .badge-text-blue { fill: #38bdf8; }
+    .badge-text { fill: #92400e; }
+    .badge-text-purple { fill: #5b21b6; }
+    .badge-text-blue { fill: #0c4a6e; }
     .target-sub { fill: #94a3b8; }
     .conn-line { stroke: #475569; }
     .conn-line-orange { stroke: #c2410c; }

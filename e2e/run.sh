@@ -87,8 +87,9 @@ source /e2e/tests/03-mtproto.sh
 source /e2e/tests/04-residential.sh
 source /e2e/tests/05-stats.sh
 source /e2e/tests/06-limits.sh
-source /e2e/tests/07-change.sh
-source /e2e/tests/08-lifecycle.sh
+source /e2e/tests/07-providers.sh
+source /e2e/tests/08-change.sh
+source /e2e/tests/09-lifecycle.sh
 
 echo ""
 echo "═══════════════════════════════════════════"

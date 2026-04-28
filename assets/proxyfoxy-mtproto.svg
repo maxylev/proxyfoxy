@@ -39,9 +39,9 @@
     .ip-bg-res { fill: #16a34a; }
     .ip-bg-target { fill: #059669; }
     .ip-text { fill: #ffffff; }
-    .badge-text { fill: #fbbf24; }
-    .badge-text-purple { fill: #a78bfa; }
-    .badge-text-blue { fill: #38bdf8; }
+    .badge-text { fill: #92400e; }
+    .badge-text-purple { fill: #5b21b6; }
+    .badge-text-blue { fill: #0c4a6e; }
     .target-sub { fill: #94a3b8; }
     .conn-line { stroke: #475569; }
     .conn-line-orange { stroke: #c2410c; }
@@ -85,7 +85,7 @@
 
   <g transform="translate(480,98)">
     <rect x="-32" y="-10" width="64" height="20" rx="10" fill="#e0f2fe" stroke="#0284c7" stroke-width="1"/>
-    <text x="0" y="4" text-anchor="middle" font-family="system-ui" font-size="8" class="badge-text-blue" font-weight="700">IP changes</text>
+    <text x="0" y="3" text-anchor="middle" font-family="system-ui" font-size="8" class="badge-text-blue" font-weight="700">IP changes</text>
   </g>
 
   <!-- Client (Smartphone) -->

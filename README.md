@@ -20,7 +20,7 @@ Instantly install, configure, and manage authenticated proxies on your VPS. Prox
 
 ---
 
-## 🚀 Standard Usage (VPS Setup)
+## 🚀 Quick Start
 
 Connect to your VPS and run `proxyfoxy` instantly via `npx` (Requires Node.js):
 
@@ -28,35 +28,86 @@ Connect to your VPS and run `proxyfoxy` instantly via `npx` (Requires Node.js):
 npx proxyfoxy add myuser supersecret123 8000
 ```
 
-_(By default, this installs a standard HTTP web proxy)._
+```
+🚀 Deploying HTTP Proxy -> Port: 8000...
 
-### Supported Architectures
+✅ SUCCESS! Proxy is live.
+
+   🌐 Ready to use: myuser:supersecret123@203.0.113.50:8000
+```
+
+---
+
+## 📡 Supported Architectures
 
 You can specify the protocol flag to deploy different proxy architectures natively:
 
-#### HTTP (Squid)
+### HTTP (Squid)
 
 ```bash
 npx proxyfoxy add myuser mypass 8000 http
 ```
 
-<p align="center"><img src="https://raw.githubusercontent.com/maxylev/proxyfoxy/refs/heads/main/assets/proxyfoxy-http.svg" alt="HTTP Proxy Architecture" width="720"></p>
+```
+🚀 Deploying HTTP Proxy -> Port: 8000...
 
-#### SOCKS5 (Dante)
+✅ SUCCESS! Proxy is live.
+
+   🌐 Ready to use: myuser:mypass@203.0.113.50:8000
+```
+
+<p align="center"><img src="https://raw.githubusercontent.com/maxylev/proxyfoxy/refs/heads/main/assets/proxyfoxy-http.svg" alt="HTTP Proxy Architecture"></p>
+
+### SOCKS5 (Dante)
 
 ```bash
 npx proxyfoxy add myuser mypass 8001 socks5
 ```
 
-<p align="center"><img src="https://raw.githubusercontent.com/maxylev/proxyfoxy/refs/heads/main/assets/proxyfoxy-socks5.svg" alt="SOCKS5 Proxy Architecture" width="720"></p>
+```
+🚀 Deploying SOCKS5 Proxy -> Port: 8001...
 
-#### MTProto (Telegram)
+✅ SUCCESS! Proxy is live.
+
+   🌐 Ready to use: myuser:mypass@203.0.113.50:8001
+```
+
+<p align="center"><img src="https://raw.githubusercontent.com/maxylev/proxyfoxy/refs/heads/main/assets/proxyfoxy-socks5.svg" alt="SOCKS5 Proxy Architecture"></p>
+
+### MTProto (Telegram)
 
 ```bash
 npx proxyfoxy add myuser skip 8002 mtproto
 ```
 
-<p align="center"><img src="https://raw.githubusercontent.com/maxylev/proxyfoxy/refs/heads/main/assets/proxyfoxy-mtproto.svg" alt="MTProto Proxy Architecture" width="720"></p>
+```
+🚀 Deploying MTPROTO Proxy -> Port: 8002...
+
+✅ SUCCESS! Proxy is live.
+
+   🌐 TG Link: tg://proxy?server=203.0.113.50&port=8002&secret=ee...bHM
+```
+
+<p align="center"><img src="https://raw.githubusercontent.com/maxylev/proxyfoxy/refs/heads/main/assets/proxyfoxy-mtproto.svg" alt="MTProto Proxy Architecture"></p>
+
+### Residential (Distributed Relay)
+
+```bash
+npx proxyfoxy add res_user res_pass 8003 residential --country=US --limit=2GB
+```
+
+```
+🚀 Deploying RESIDENTIAL Proxy -> Port: 8003...
+
+✅ SUCCESS! Proxy is live.
+
+   🌐 Proxy: res_user:res_pass@203.0.113.50:8003
+   🏠 Home PC string: npx proxyfoxy provider 203.0.113.50:9000
+```
+
+You can specify a required country code (`--country=XX`) and a strict data limit (`--limit=XGB`). If the data limit is hit, connections are instantly severed.
+
+<p align="center"><img src="https://raw.githubusercontent.com/maxylev/proxyfoxy/refs/heads/main/assets/proxyfoxy-residential.svg" alt="Residential Proxy Architecture"></p>
 
 ---
 
@@ -64,48 +115,157 @@ npx proxyfoxy add myuser skip 8002 mtproto
 
 ProxyFoxy allows you to create your own distributed residential proxy pool (similar to BrightData or Honeygain). Home PCs connect to your Master VPS and donate their IPs. Consumers connect to your VPS, which invisibly relays the traffic to the Home PC.
 
-<p align="center"><img src="https://raw.githubusercontent.com/maxylev/proxyfoxy/refs/heads/main/assets/proxyfoxy-residential.svg" alt="Residential Proxy Architecture" width="840"></p>
+### Run the Provider Script on a Home PC
 
-**1. Create a Master Node on your VPS**
-You can specify a required country code (`--country=XX`) and a strict data limit (`--limit=XGB`). If the data limit is hit, connections are instantly severed.
+Anyone can run this locally to inject themselves into the proxy pool. ProxyFoxy will auto-detect the Home PC's country using IP APIs. No credentials needed — just point it at your VPS.
 
 ```bash
-npx proxyfoxy add res_user res_pass 8003 residential --country=US --limit=2GB
+npx proxyfoxy provider <VPS_IP>:9000
 ```
 
-**2. Run the Provider Script on a Home PC**
-Anyone can run this locally to inject themselves into the proxy pool. ProxyFoxy will auto-detect the Home PC's country using IP APIs.
+```
+✅ Connected! Proxying traffic globally...
+```
 
 ```bash
-npx proxyfoxy provider res_user:res_pass@<VPS_IP>:9000
-
 # Suppress reconnect messages (useful for Docker / PM2 / systemd)
-npx proxyfoxy provider res_user:res_pass@<VPS_IP>:9000 --quiet
+npx proxyfoxy provider <VPS_IP>:9000 --quiet
 
 # Run it in the background / on boot
 npm install -g pm2 && \
-pm2 start "npx proxyfoxy provider user:pass@ip:9000" --name "proxy-exit-node" --quiet && \
+pm2 start "npx proxyfoxy provider <VPS_IP>:9000" --name "proxy-exit-node" --quiet && \
 pm2 startup
 ```
 
-**3. Consume the Proxy**
-Set your browser extension or scraper to use the proxy generated in Step 1 (`VPS_IP:8003`).
+Providers that gracefully stop (SIGTERM/SIGINT) are disconnected without penalty. Providers that abruptly disconnect too often (>5 times in 10 minutes) are automatically blacklisted.
+
+### Manage Providers (on VPS)
+
+Control which providers can join your network with blacklists and whitelists.
+
+```bash
+npx proxyfoxy providers                           # List connected / blacklisted providers
+npx proxyfoxy providers block <ip> [reason]       # Blacklist a provider IP
+npx proxyfoxy providers unblock <ip>              # Remove IP from blacklist
+npx proxyfoxy providers whitelist <ip>            # Restrict to only whitelisted IPs
+npx proxyfoxy providers unwhitelist <ip>          # Remove IP from whitelist
+```
+
+```
+🏠 PROVIDER MANAGEMENT
+════════════════════════════════════════════
+
+🟢 Connected (2):
+   ├─ 198.51.100.22 [US] since 2026-04-28T14:30:00.000Z
+   ├─ 203.0.113.85 [DE] since 2026-04-28T14:32:15.000Z
+
+🚫 Blacklisted (1):
+   ├─ 192.0.2.66 — suspicious (2026-04-28T15:00:00.000Z)
+```
 
 ---
 
 ## 📊 CLI Command Reference & Analytics
 
-Manage multiple proxies and track bandwidth dynamically.
+### `list` — List All Proxies
 
-| Command                                                      | Description                                                                                       |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `npx proxyfoxy add <u/p/port> [proto] [--country] [--limit]` | Installs proxies, limits bandwidth, opens firewalls, and boots daemons.                           |
-| `npx proxyfoxy change <user> <newpass>`                      | Live-updates a user's password without dropping connections.                                      |
-| `npx proxyfoxy delete <user> <port>`                         | Safely deletes the user and permanently closes the firewall port.                                 |
-| `npx proxyfoxy list`                                         | Lists all active proxies in a 1-click copy-paste format.                                          |
-| `npx proxyfoxy status`                                       | **Analytics Dashboard:** View Sent/Received GB per Port, active IP pools, and country breakdowns. |
-| `npx proxyfoxy stop/start [port/proto]`                      | Halt or resume specific proxies.                                                                  |
-| `npx proxyfoxy uninstall`                                    | **Nuclear Option:** Wipes all proxies, databases, and dependencies.                               |
+```bash
+npx proxyfoxy list
+```
+
+```
+🦊 ProxyFoxy - Proxies
+════════════════════════════════════════════════════════
+🟢 HTTP           -> myuser:mypass@203.0.113.50:8000
+🟢 SOCKS5         -> myuser:mypass@203.0.113.50:8001
+🟢 MTPROTO        -> tg://proxy?server=203.0.113.50&port=8002&secret=ee...bHM
+🟢 RESIDENTIAL [US] -> res_user:res_pass@203.0.113.50:8003
+════════════════════════════════════════════════════════
+```
+
+### `status` — Analytics Dashboard
+
+```bash
+npx proxyfoxy status
+```
+
+```
+📊 PROXYFOXY STATUS & ANALYTICS
+════════════════════════════════════════════════════════
+🛠️  CORE SERVICES:
+   ├─ HTTP (Squid):    🟢 RUNNING
+   ├─ SOCKS5 (Dante):  🟢 RUNNING
+   └─ Master Gateway:  🟢 RUNNING
+
+📈 TRAFFIC BY PORT:
+   ├─ Port 8000 [HTTP]
+   │  └─ Data: 1.2 GB IN / 856.4 MB OUT
+   ├─ Port 8001 [SOCKS5]
+   │  └─ Data: 512.0 KB IN / 256.0 KB OUT
+   ├─ Port 8003 [RESIDENTIAL] (Limit: 2.00 GB)
+   │  └─ Data: 450.2 MB IN / 312.8 MB OUT
+
+🏠 RESIDENTIAL PROVIDER POOL:
+   🌍 US: 2 Nodes Active
+      ├─ 198.51.100.22 — 85.3 MB IN / 52.1 MB OUT
+      ├─ 203.0.113.85 — 43.2 MB IN / 32.1 MB OUT
+      └─ Subtotal: 128.5 MB IN / 84.2 MB OUT
+   🌍 DE: 1 Node Active
+      ├─ 192.0.2.10 — 42.0 MB IN / 31.2 MB OUT
+      └─ Subtotal: 42.0 MB IN / 31.2 MB OUT
+
+   📊 Total: 3 Nodes — 170.5 MB IN / 115.4 MB OUT
+════════════════════════════════════════════════════════
+```
+
+### `change` — Hot-Reload Password
+
+```bash
+npx proxyfoxy change myuser newsecret456
+```
+
+```
+✅ Password successfully updated for user 'myuser'.
+```
+
+Live-updates the password across all protocols for that user without dropping active connections.
+
+### `delete` — Remove a Proxy
+
+```bash
+npx proxyfoxy delete myuser 8000
+```
+
+```
+✅ Deleted http proxy on port 8000.
+```
+
+Safely deletes the user, closes the firewall port, and removes the service.
+
+### `stop` / `start` — Halt or Resume Proxies
+
+```bash
+npx proxyfoxy stop 8000              # Stop a specific port
+npx proxyfoxy start http             # Start all HTTP proxies
+npx proxyfoxy stop                   # Stop everything
+```
+
+```
+✅ Successfully executed 'stop' on requested services.
+```
+
+### `uninstall` — Nuclear Option
+
+```bash
+npx proxyfoxy uninstall
+```
+
+```
+⚠️  Wiping ProxyFoxy from this machine completely...
+✅ Uninstallation successful. Your system is clean.
+```
+
+Removes all proxies, databases, firewall rules, and service files.
 
 ---
 
@@ -131,7 +291,7 @@ docker run -d -p 8003:8003 -p 9000:9000 --name residential-proxy ghcr.io/maxylev
 
 ## 🧪 End-to-End Testing
 
-ProxyFoxy includes a full Docker-based E2E test suite that validates all protocols, traffic analytics, data limits, password hot-reloading, and the complete residential relay flow.
+ProxyFoxy includes a full Docker-based E2E test suite that validates all protocols, traffic analytics, data limits, password hot-reloading, provider management (blacklist/whitelist/graceful disconnect), and the complete residential relay flow.
 
 ```bash
 cd e2e && docker compose up --build --abort-on-container-exit

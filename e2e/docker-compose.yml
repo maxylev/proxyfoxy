@@ -17,7 +17,7 @@ services:
         condition: service_started
     networks:
       - proxyfoxy
-    entrypoint: ["proxyfoxy", "provider", "res_user:res_pass@server:9000", "--quiet"]
+    entrypoint: ["proxyfoxy", "provider", "server:9000", "--quiet"]
 
 networks:
   proxyfoxy:
