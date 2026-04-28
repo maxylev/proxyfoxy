@@ -10,8 +10,5 @@ WORKDIR /app
 # 4. Copy ONLY your script files
 COPY package.json index.js ./
 
-# 5. Expose default port
-EXPOSE 8000
-
-# 6. Run our specific docker command directly
+# 5. Run our specific docker command directly
 ENTRYPOINT ["node", "/app/index.js", "docker"]
