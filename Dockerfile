@@ -1,20 +1,17 @@
-# Use ultra-lightweight Node on Alpine Linux
-FROM node:24-alpine
+# 1. Use pure Alpine Linux
+FROM alpine:latest
 
-# Install Squid and Apache HTTP tools (for htpasswd)
-RUN apk update && apk add squid apache2-utils
+# 2. Install ONLY what we need (Node runtime, Squid, htpasswd)
+RUN apk add --no-cache nodejs squid apache2-utils
 
-# Setup workspace
+# 3. Setup workspace
 WORKDIR /app
 
-# Copy project files
+# 4. Copy ONLY your script files
 COPY package.json index.js ./
 
-# Link the package globally so 'proxyfoxy' command works
-RUN npm link
-
-# Expose default port (User can map to anything with docker run -p)
+# 5. Expose default port
 EXPOSE 8000
 
-# Run our specific docker command in the foreground
+# 6. Run our specific docker command directly
 ENTRYPOINT ["node", "/app/index.js", "docker"]
