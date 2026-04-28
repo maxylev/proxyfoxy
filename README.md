@@ -30,7 +30,7 @@ Want to run it on a Docker host, NAS, or Kubernetes cluster? ProxyFoxy supports 
 **Run the container in the background (`-d`) and map the port (`-p`):**
 
 ```bash
-docker run -d -p 8000:8000 ghcr.io/maxylev/proxyfoxy myuser mypass 8000
+docker run -d -p 8000:8000 --name my-proxy ghcr.io/maxylev/proxyfoxy myuser mypass 8000
 ```
 
 ---
