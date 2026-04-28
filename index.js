@@ -13,13 +13,15 @@ const os = require("os");
 const rawArgs = process.argv.slice(2);
 const command = rawArgs[0];
 const args = [];
-const flags = { country: null, limit: null };
+const flags = { country: null, limit: null, gateway: 9000 };
 
 for (let i = 1; i < rawArgs.length; i++) {
   if (rawArgs[i].startsWith("--country="))
     flags.country = rawArgs[i].split("=")[1].toUpperCase();
   else if (rawArgs[i].startsWith("--limit="))
     flags.limit = parseBytes(rawArgs[i].split("=")[1]);
+  else if (rawArgs[i].startsWith("--gateway="))
+    flags.gateway = parseInt(rawArgs[i].split("=")[1]);
   else args.push(rawArgs[i]);
 }
 
@@ -55,8 +57,8 @@ Protocols Available:
   - residential (Routes traffic through distributed Home PCs)
 
 Residential Network:
-  npx proxyfoxy provider <vps-ip>:9000              # Run on Exit Node (Home PC)
-  npx proxyfoxy provider <vps-ip>:9000 --quiet      # Suppress reconnect messages
+  npx proxyfoxy provider <vps-ip>:<gateway-port>   # Run on Exit Node (Home PC)
+  npx proxyfoxy provider <vps-ip>:<gateway-port> --quiet  # Suppress reconnect messages
 
 Provider Management (run on VPS):
   npx proxyfoxy providers                           # List connected / blacklisted providers
@@ -371,8 +373,9 @@ function trackTraffic(port) {
 // -----------------------------------------------------------------
 // 🏠 RESIDENTIAL RELAY NETWORK (Daemon)
 // -----------------------------------------------------------------
-function serveResidentialMaster() {
-  console.log("🚀 Starting Master Residential Daemon on port 9000...");
+function serveResidentialMaster(gatewayPort) {
+  gatewayPort = gatewayPort || 9000;
+  console.log(`🚀 Starting Master Residential Daemon on port ${gatewayPort}...`);
   let providers = [];
   const consumerServers = new Map();
   const providerErrors = new Map();
@@ -537,109 +540,180 @@ function serveResidentialMaster() {
   });
 
   gateway.on("error", () => {});
-  gateway.listen(9000, "0.0.0.0");
+  gateway.listen(gatewayPort, "0.0.0.0");
+
+  function relayToProvider(socket, provider, proxyConf, host, port) {
+    const id = crypto.randomBytes(4).toString("hex");
+    provider.targets.set(id, socket);
+
+    try {
+      provider.write(
+        JSON.stringify({ type: "connect", id, host, port }) + "\n",
+      );
+    } catch (e) {
+      return socket.destroy();
+    }
+
+    socket.on("data", (chunk) => {
+      try {
+        provider.write(
+          JSON.stringify({
+            type: "data",
+            id,
+            data: chunk.toString("base64"),
+          }) + "\n",
+        );
+      } catch (e) {
+        socket.destroy();
+      }
+    });
+
+    const closeDown = () => {
+      try {
+        provider.write(JSON.stringify({ type: "close", id }) + "\n");
+      } catch (e) {}
+      provider.targets.delete(id);
+      socket.destroy();
+    };
+
+    socket.on("error", closeDown);
+    socket.on("close", closeDown);
+  }
+
+  function pickProvider(proxyConf) {
+    let validProviders = proxyConf.country
+      ? providers.filter((p) => p.country === proxyConf.country)
+      : providers;
+    if (validProviders.length === 0) return null;
+    return validProviders[Math.floor(Math.random() * validProviders.length)];
+  }
 
   function handleConsumer(socket, proxyConf) {
-    socket.once("data", (greeting) => {
-      if (greeting[0] !== 0x05 || greeting.length < 3) return socket.destroy();
+    socket.once("data", (firstChunk) => {
+      if (firstChunk[0] === 0x05) {
+        handleSOCKS5(socket, proxyConf, firstChunk);
+      } else {
+        handleHTTPConnect(socket, proxyConf, firstChunk);
+      }
+    });
+    socket.on("error", () => socket.destroy());
+  }
 
-      const nMethods = greeting[1];
-      const methods = new Set();
-      for (let i = 0; i < nMethods && 2 + i < greeting.length; i++)
-        methods.add(greeting[2 + i]);
+  function handleSOCKS5(socket, proxyConf, greeting) {
+    if (greeting.length < 3) return socket.destroy();
 
-      if (!methods.has(0x02)) {
-        socket.write(Buffer.from([0x05, 0xff]));
+    const nMethods = greeting[1];
+    const methods = new Set();
+    for (let i = 0; i < nMethods && 2 + i < greeting.length; i++)
+      methods.add(greeting[2 + i]);
+
+    if (!methods.has(0x02)) {
+      socket.write(Buffer.from([0x05, 0xff]));
+      return socket.destroy();
+    }
+
+    socket.write(Buffer.from([0x05, 0x02]));
+
+    socket.once("data", (authData) => {
+      if (authData[0] !== 0x01 || authData.length < 4) {
+        socket.write(Buffer.from([0x01, 0x01]));
         return socket.destroy();
       }
 
-      socket.write(Buffer.from([0x05, 0x02]));
+      const ulen = authData[1];
+      const uname = authData.slice(2, 2 + ulen).toString();
+      const plen = authData[2 + ulen];
+      const passwd = authData.slice(3 + ulen, 3 + ulen + plen).toString();
 
-      socket.once("data", (authData) => {
-        if (authData[0] !== 0x01 || authData.length < 4) {
-          socket.write(Buffer.from([0x01, 0x01]));
+      if (uname !== proxyConf.user || passwd !== proxyConf.pass) {
+        socket.write(Buffer.from([0x01, 0x01]));
+        return socket.destroy();
+      }
+
+      socket.write(Buffer.from([0x01, 0x00]));
+
+      const provider = pickProvider(proxyConf);
+      if (!provider) return socket.destroy();
+
+      socket.once("data", (connData) => {
+        if (connData[0] !== 0x05 || connData[1] !== 0x01)
           return socket.destroy();
-        }
 
-        const ulen = authData[1];
-        const uname = authData.slice(2, 2 + ulen).toString();
-        const plen = authData[2 + ulen];
-        const passwd = authData.slice(3 + ulen, 3 + ulen + plen).toString();
+        let host = "",
+          offset = 4;
+        if (connData[3] === 0x01) {
+          host = connData.slice(4, 8).join(".");
+          offset = 8;
+        } else if (connData[3] === 0x03) {
+          const len = connData[4];
+          host = connData.slice(5, 5 + len).toString();
+          offset = 5 + len;
+        } else return socket.destroy();
 
-        if (uname !== proxyConf.user || passwd !== proxyConf.pass) {
-          socket.write(Buffer.from([0x01, 0x01]));
-          return socket.destroy();
-        }
-
-        socket.write(Buffer.from([0x01, 0x00]));
-
-        let validProviders = proxyConf.country
-          ? providers.filter((p) => p.country === proxyConf.country)
-          : providers;
-        if (validProviders.length === 0) return socket.destroy();
-
-        const provider =
-          validProviders[Math.floor(Math.random() * validProviders.length)];
-        const id = crypto.randomBytes(4).toString("hex");
-
-        provider.targets.set(id, socket);
-
-        socket.once("data", (connData) => {
-          if (connData[0] !== 0x05 || connData[1] !== 0x01)
-            return socket.destroy();
-
-          let host = "",
-            offset = 4;
-          if (connData[3] === 0x01) {
-            host = connData.slice(4, 8).join(".");
-            offset = 8;
-          } else if (connData[3] === 0x03) {
-            const len = connData[4];
-            host = connData.slice(5, 5 + len).toString();
-            offset = 5 + len;
-          } else return socket.destroy();
-
-          const targetPort = connData.readUInt16BE(offset);
-          try {
-            provider.write(
-              JSON.stringify({ type: "connect", id, host, port: targetPort }) +
-                "\n",
-            );
-            socket.write(
-              Buffer.from([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]),
-            );
-          } catch (e) {
-            return socket.destroy();
-          }
-
-          socket.on("data", (chunk) => {
-            try {
-              provider.write(
-                JSON.stringify({
-                  type: "data",
-                  id,
-                  data: chunk.toString("base64"),
-                }) + "\n",
-              );
-            } catch (e) {
-              socket.destroy();
-            }
-          });
-
-          const closeDown = () => {
-            try {
-              provider.write(JSON.stringify({ type: "close", id }) + "\n");
-            } catch (e) {}
-            provider.targets.delete(id);
-            socket.destroy();
-          };
-
-          socket.on("error", closeDown);
-          socket.on("close", closeDown);
-        });
+        const targetPort = connData.readUInt16BE(offset);
+        socket.write(
+          Buffer.from([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]),
+        );
+        relayToProvider(socket, provider, proxyConf, host, targetPort);
       });
     });
-    socket.on("error", () => socket.destroy());
+  }
+
+  function handleHTTPConnect(socket, proxyConf, firstChunk) {
+    const header = firstChunk.toString("utf8");
+    const match = header.match(
+      /^CONNECT\s+([^\s:]+):(\d+)\s+HTTP\/1\.[01]\r?\n/i,
+    );
+    if (!match) {
+      socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
+      return socket.destroy();
+    }
+
+    const [, host, port] = match;
+
+    let authHeader = "";
+    const lines = header.split(/\r?\n/);
+    for (const line of lines) {
+      if (line.toLowerCase().startsWith("proxy-authorization:")) {
+        authHeader = line.substring(line.indexOf(":") + 1).trim();
+        break;
+      }
+    }
+
+    if (!authHeader.startsWith("Basic ")) {
+      socket.write(
+        "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"proxyfoxy\"\r\n\r\n",
+      );
+      return socket.destroy();
+    }
+
+    const decoded = Buffer.from(authHeader.slice(6), "base64").toString();
+    const colonIdx = decoded.indexOf(":");
+    if (colonIdx === -1) {
+      socket.write(
+        "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"proxyfoxy\"\r\n\r\n",
+      );
+      return socket.destroy();
+    }
+
+    const uname = decoded.substring(0, colonIdx);
+    const passwd = decoded.substring(colonIdx + 1);
+
+    if (uname !== proxyConf.user || passwd !== proxyConf.pass) {
+      socket.write(
+        "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"proxyfoxy\"\r\n\r\n",
+      );
+      return socket.destroy();
+    }
+
+    const provider = pickProvider(proxyConf);
+    if (!provider) {
+      socket.write("HTTP/1.1 502 Bad Gateway\r\n\r\n");
+      return socket.destroy();
+    }
+
+    socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+    relayToProvider(socket, provider, proxyConf, host, parseInt(port));
   }
 }
 
@@ -738,7 +812,7 @@ function runProviderClient(host, port, quiet) {
   try {
     switch (command) {
       case "serve-master":
-        serveResidentialMaster();
+        serveResidentialMaster(parseInt(args[0]) || 9000);
         break;
 
       case "provider": {
@@ -946,9 +1020,9 @@ function runProviderClient(host, port, quiet) {
             scriptPath = fs.realpathSync(process.argv[1]);
           osInfo.daemonize(
             `proxyfoxy-residential-master`,
-            `${execPath} ${scriptPath} serve-master`,
+            `${execPath} ${scriptPath} serve-master ${flags.gateway}`,
           );
-          configureFirewall(9000, osInfo);
+          configureFirewall(flags.gateway, osInfo);
         }
 
         configureFirewall(port, osInfo);
@@ -960,6 +1034,7 @@ function runProviderClient(host, port, quiet) {
           port,
           country: flags.country,
           limit: flags.limit,
+          gatewayPort: protocol === "residential" ? flags.gateway : undefined,
         });
         saveDb();
 
@@ -974,7 +1049,7 @@ function runProviderClient(host, port, quiet) {
             `   🌐 Proxy: \x1b[32m${user}:${pass}@${ip}:${port}\x1b[0m`,
           );
           console.log(
-            `   🏠 Home PC string: \x1b[36mnpx proxyfoxy provider ${ip}:9000\x1b[0m\n`,
+            `   🏠 Home PC string: \x1b[36mnpx proxyfoxy provider ${ip}:${flags.gateway}\x1b[0m\n`,
           );
         } else {
           console.log(
@@ -1094,14 +1169,29 @@ function runProviderClient(host, port, quiet) {
         )
           ? "🟢 RUNNING"
           : "🔴 STOPPED";
-        let masterStatus = portOrService(9000, "proxyfoxy-residential-master")
+        let gatewayPort = db.proxies.find((p) => p.type === "residential")?.gatewayPort || 9000;
+        let masterStatus = portOrService(gatewayPort, "proxyfoxy-residential-master")
           ? "🟢 RUNNING"
           : "🔴 STOPPED";
+
+        const mtprotoProxies = db.proxies.filter((p) => p.type === "mtproto");
 
         console.log(`🛠️  CORE SERVICES:`);
         console.log(`   ├─ HTTP (Squid):    ${squidStatus}`);
         console.log(`   ├─ SOCKS5 (Dante):  ${danteStatus}`);
-        console.log(`   └─ Master Gateway:  ${masterStatus}\n`);
+        console.log(`   ├─ Master Gateway:  ${masterStatus}`);
+        if (mtprotoProxies.length > 0) {
+          mtprotoProxies.forEach((p, i) => {
+            const prefix = i < mtprotoProxies.length - 1 ? "├─" : "└─";
+            const mtgStatus = portOrService(p.port, `proxyfoxy-mtproto-${p.port}`)
+              ? "🟢 RUNNING"
+              : "🔴 STOPPED";
+            console.log(
+              `   ${prefix} MTProto :${p.port}  ${mtgStatus}`,
+            );
+          });
+        }
+        console.log();
 
         console.log(`📈 TRAFFIC BY PORT:`);
         if (db.proxies.length > 0) {
@@ -1252,7 +1342,8 @@ function runProviderClient(host, port, quiet) {
 
         // Cleanup DB, State & Firewall rules
         db.proxies.forEach((p) => configureFirewall(p.port, osInfo, true));
-        configureFirewall(9000, osInfo, true);
+        const gwPort = db.proxies.find((p) => p.type === "residential")?.gatewayPort || 9000;
+        configureFirewall(gwPort, osInfo, true);
         if (fs.existsSync(DB_PATH)) fs.unlinkSync(DB_PATH);
         if (fs.existsSync(STATE_PATH)) fs.unlinkSync(STATE_PATH);
 
@@ -1337,9 +1428,10 @@ function runProviderClient(host, port, quiet) {
               port: dPort,
               country: flags.country,
               limit: flags.limit,
+              gatewayPort: flags.gateway,
             });
             saveDb();
-            serveResidentialMaster();
+            serveResidentialMaster(flags.gateway);
           }
         }
     }

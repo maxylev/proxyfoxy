@@ -29,10 +29,10 @@
 
   /* Dark theme */
   @media (prefers-color-scheme: dark) {
-    .title-text { fill: #e2e8f0; }
+    .title-text { fill: #aaafb6; }
     .subtitle-text { fill: #94a3b8; }
     .label-text { fill: #cbd5e1; }
-    .icon-fill { fill: #e2e8f0; }
+    .icon-fill { fill: #aaafb6; }
     .flow-label { fill: #94a3b8; }
     .ip-bg-client { fill: #475569; }
     .ip-bg-proxy { fill: #3b82f6; }
@@ -96,9 +96,9 @@
   <circle r="2.5" fill="#fbbf24" opacity="0.85"><animateMotion dur="1.5s" begin="12.9s" repeatCount="indefinite" path="M629,240 C680,260 790,285 838,325"/></circle>
 
   <!-- Pulsing glow at Home PCs (exit nodes) -->
-  <circle cx="600" cy="85" r="24" fill="#d97706" opacity="0"><animate attributeName="r" values="24;53;24" dur="2.5s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.35;0;0.35" dur="2.5s" repeatCount="indefinite"/></circle>
-  <circle cx="600" cy="240" r="24" fill="#d97706" opacity="0"><animate attributeName="r" values="24;53;24" dur="2.8s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.35;0;0.35" dur="2.8s" repeatCount="indefinite"/></circle>
-  <circle cx="600" cy="395" r="24" fill="#d97706" opacity="0"><animate attributeName="r" values="24;53;24" dur="3.1s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.35;0;0.35" dur="3.1s" repeatCount="indefinite"/></circle>
+  <circle cx="600" cy="85" r="24" fill="#d97706" opacity="0"><animate attributeName="r" values="24;53;24" dur="2.5s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.15;0;0.15" dur="2.5s" repeatCount="indefinite"/></circle>
+  <circle cx="600" cy="240" r="24" fill="#d97706" opacity="0"><animate attributeName="r" values="24;53;24" dur="2.8s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.15;0;0.15" dur="2.8s" repeatCount="indefinite"/></circle>
+  <circle cx="600" cy="395" r="24" fill="#d97706" opacity="0"><animate attributeName="r" values="24;53;24" dur="3.1s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.15;0;0.15" dur="3.1s" repeatCount="indefinite"/></circle>
 
   <!-- Consumer 1 -->
   <g transform="translate(110,155) scale(0.09) translate(-256,-256)" class="icon-fill">

@@ -16,6 +16,8 @@ Instantly install, configure, and manage authenticated proxies on your VPS. Prox
 - **Zero-Overhead Analytics:** Uses kernel `iptables` to track proxy traffic (Sent/Received GB) with zero CPU strain on Node.js.
 - **Create Your Own Residential Network:** Link home computers to your VPS and route consumer traffic strictly through designated geographic locations.
 - **Hot-Reloading:** Change passwords and add new proxies without disconnecting currently active users.
+- **Provider Management:** Blacklist, whitelist, and auto-penalize misbehaving residential providers.
+- **Dual-Protocol Consumers:** Residential proxies accept both SOCKS5 and HTTP CONNECT on the same port.
 - **Instant Output:** Formats proxies beautifully into `user:pass@ip:port` for immediate copy-pasting.
 
 ---
@@ -105,7 +107,13 @@ npx proxyfoxy add res_user res_pass 8003 residential --country=US --limit=2GB
    🏠 Home PC string: npx proxyfoxy provider 203.0.113.50:9000
 ```
 
-You can specify a required country code (`--country=XX`) and a strict data limit (`--limit=XGB`). If the data limit is hit, connections are instantly severed.
+You can specify a required country code (`--country=XX`), a strict data limit (`--limit=XGB`), and a custom gateway port (`--gateway=PORT`, default 9000). If the data limit is hit, connections are instantly severed.
+
+```bash
+# Custom gateway port (providers connect here instead of 9000)
+npx proxyfoxy add res_user res_pass 8003 residential --gateway=5000
+# → Provider string: npx proxyfoxy provider 203.0.113.50:5000
+```
 
 <p align="center"><img src="https://raw.githubusercontent.com/maxylev/proxyfoxy/refs/heads/main/assets/proxyfoxy-residential.svg" alt="Residential Proxy Architecture"></p>
 
@@ -120,7 +128,7 @@ ProxyFoxy allows you to create your own distributed residential proxy pool (simi
 Anyone can run this locally to inject themselves into the proxy pool. ProxyFoxy will auto-detect the Home PC's country using IP APIs. No credentials needed — just point it at your VPS.
 
 ```bash
-npx proxyfoxy provider <VPS_IP>:9000
+npx proxyfoxy provider <VPS_IP>:<GATEWAY_PORT>
 ```
 
 ```
@@ -129,15 +137,29 @@ npx proxyfoxy provider <VPS_IP>:9000
 
 ```bash
 # Suppress reconnect messages (useful for Docker / PM2 / systemd)
-npx proxyfoxy provider <VPS_IP>:9000 --quiet
+npx proxyfoxy provider <VPS_IP>:<GATEWAY_PORT> --quiet
 
 # Run it in the background / on boot
 npm install -g pm2 && \
-pm2 start "npx proxyfoxy provider <VPS_IP>:9000" --name "proxy-exit-node" --quiet && \
+pm2 start "npx proxyfoxy provider <VPS_IP>:<GATEWAY_PORT>" --name "proxy-exit-node" --quiet && \
 pm2 startup
 ```
 
 Providers that gracefully stop (SIGTERM/SIGINT) are disconnected without penalty. Providers that abruptly disconnect too often (>5 times in 10 minutes) are automatically blacklisted.
+
+### Consume the Proxy
+
+Residential proxies accept both **SOCKS5** and **HTTP CONNECT** on the same consumer port:
+
+```bash
+# SOCKS5
+curl --socks5-hostname res_user:res_pass@<VPS_IP>:8003 https://icanhazip.com
+
+# HTTP CONNECT
+curl -x http://res_user:res_pass@<VPS_IP>:8003 https://icanhazip.com
+```
+
+The proxy is a fully transparent TCP tunnel — cookies, sessions, TLS, and all headers pass through untouched.
 
 ### Manage Providers (on VPS)
 
@@ -153,7 +175,7 @@ npx proxyfoxy providers unwhitelist <ip>          # Remove IP from whitelist
 
 ```
 🏠 PROVIDER MANAGEMENT
-════════════════════════════════════════════
+═════════════════════════════════════════════
 
 🟢 Connected (2):
    ├─ 198.51.100.22 [US] since 2026-04-28T14:30:00.000Z
@@ -175,12 +197,12 @@ npx proxyfoxy list
 
 ```
 🦊 ProxyFoxy - Proxies
-════════════════════════════════════════════════════════
-🟢 HTTP           -> myuser:mypass@203.0.113.50:8000
-🟢 SOCKS5         -> myuser:mypass@203.0.113.50:8001
-🟢 MTPROTO        -> tg://proxy?server=203.0.113.50&port=8002&secret=ee...bHM
+═════════════════════════════════════════════════════════
+🟢 HTTP             -> myuser:mypass@203.0.113.50:8000
+🟢 SOCKS5           -> myuser:mypass@203.0.113.50:8001
+🟢 MTPROTO          -> tg://proxy?server=203.0.113.50&port=8002&secret=ee...bHM
 🟢 RESIDENTIAL [US] -> res_user:res_pass@203.0.113.50:8003
-════════════════════════════════════════════════════════
+═════════════════════════════════════════════════════════
 ```
 
 ### `status` — Analytics Dashboard
@@ -191,11 +213,12 @@ npx proxyfoxy status
 
 ```
 📊 PROXYFOXY STATUS & ANALYTICS
-════════════════════════════════════════════════════════
+═════════════════════════════════════════════════════════
 🛠️  CORE SERVICES:
    ├─ HTTP (Squid):    🟢 RUNNING
    ├─ SOCKS5 (Dante):  🟢 RUNNING
-   └─ Master Gateway:  🟢 RUNNING
+   ├─ Master Gateway:  🟢 RUNNING
+   └─ MTProto :8002    🟢 RUNNING
 
 📈 TRAFFIC BY PORT:
    ├─ Port 8000 [HTTP]
@@ -215,7 +238,7 @@ npx proxyfoxy status
       └─ Subtotal: 42.0 MB IN / 31.2 MB OUT
 
    📊 Total: 3 Nodes — 170.5 MB IN / 115.4 MB OUT
-════════════════════════════════════════════════════════
+═════════════════════════════════════════════════════════
 ```
 
 ### `change` — Hot-Reload Password
@@ -247,12 +270,15 @@ Safely deletes the user, closes the firewall port, and removes the service.
 ```bash
 npx proxyfoxy stop 8000              # Stop a specific port
 npx proxyfoxy start http             # Start all HTTP proxies
+npx proxyfoxy stop residential       # Stop the master gateway (disconnects all providers)
 npx proxyfoxy stop                   # Stop everything
 ```
 
 ```
 ✅ Successfully executed 'stop' on requested services.
 ```
+
+Note: `stop residential` stops the master gateway daemon (all providers disconnect). `stop <port>` stops a specific consumer proxy but keeps the gateway running (providers stay connected).
 
 ### `uninstall` — Nuclear Option
 
@@ -301,30 +327,44 @@ The generated `tg://proxy?...` link appears in the container logs: `docker logs 
 
 Residential mode runs **two ports** inside one container:
 
-- **Port 9000** (Gateway) — where Home PC providers connect
-- **Port 8003** (Consumer) — a SOCKS5 proxy that relays traffic through providers
+- **Gateway port** (default 9000) — where Home PC providers connect
+- **Consumer port** (e.g., 8003) — accepts both SOCKS5 and HTTP CONNECT, relays through providers
 
-Both ports must be published, and you can pass `--country=` / `--limit=` flags:
+Both ports must be published. You can pass `--country=`, `--limit=`, and `--gateway=` flags:
 
 ```bash
+# Default gateway (9000)
 docker run -d \
   -p 8003:8003 \
   -p 9000:9000 \
   --name residential-proxy \
   ghcr.io/maxylev/proxyfoxy:latest \
   res_user res_pass 8003 residential --country=US --limit=2GB
+
+# Custom gateway port (5000)
+docker run -d \
+  -p 8003:8003 \
+  -p 5000:5000 \
+  --name residential-proxy \
+  ghcr.io/maxylev/proxyfoxy:latest \
+  res_user res_pass 8003 residential --country=US --gateway=5000
 ```
 
 Then on a **Home PC**, run the provider to donate your IP:
 
 ```bash
+# Use the gateway port from the --gateway flag (or 9000 by default)
 npx proxyfoxy provider <VPS_IP>:9000
 ```
 
-Consumers connect via **SOCKS5**:
+Consumers connect via **SOCKS5** or **HTTP CONNECT**:
 
 ```bash
+# SOCKS5
 curl --socks5-hostname res_user:res_pass@<VPS_IP>:8003 https://icanhazip.com
+
+# HTTP CONNECT
+curl -x http://res_user:res_pass@<VPS_IP>:8003 https://icanhazip.com
 ```
 
 Manage providers from inside the container:

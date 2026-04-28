@@ -29,13 +29,26 @@ if [ "$PROVIDER_READY" = true ]; then
     CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 \
         --socks5-hostname res_user:res_pass@127.0.0.1:8083 https://icanhazip.com) || CODE="000"
     if [ "$CODE" = "200" ]; then
-        pass "residential proxy forwards request"
+        pass "SOCKS5 residential proxy forwards request"
     else
-        fail "residential proxy forwards request (HTTP $CODE)"
+        fail "SOCKS5 residential proxy forwards request (HTTP $CODE)"
     fi
+
+    CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 \
+        -x http://res_user:res_pass@127.0.0.1:8083 https://icanhazip.com) || CODE="000"
+    if [ "$CODE" = "200" ]; then
+        pass "HTTP CONNECT residential proxy forwards request"
+    else
+        fail "HTTP CONNECT residential proxy forwards request (HTTP $CODE)"
+    fi
+
+    assert_fail "HTTP CONNECT rejects bad credentials" \
+        curl -s -o /dev/null --max-time 10 \
+        -x http://res_user:wrong@127.0.0.1:8083 https://icanhazip.com
 else
     fail "provider connected to gateway (timeout waiting for state)"
-    skip "residential proxy forwards request (no provider)"
+    skip "SOCKS5 residential proxy forwards request (no provider)"
+    skip "HTTP CONNECT residential proxy forwards request (no provider)"
 fi
 
 assert_output "status shows residential provider pool" "RESIDENTIAL" proxyfoxy status

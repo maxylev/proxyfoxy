@@ -29,10 +29,10 @@
 
   /* Dark theme */
   @media (prefers-color-scheme: dark) {
-    .title-text { fill: #e2e8f0; }
+    .title-text { fill: #aaafb6; }
     .subtitle-text { fill: #94a3b8; }
     .label-text { fill: #cbd5e1; }
-    .icon-fill { fill: #e2e8f0; }
+    .icon-fill { fill: #aaafb6; }
     .flow-label { fill: #94a3b8; }
     .ip-bg-client { fill: #475569; }
     .ip-bg-proxy { fill: #3b82f6; }
@@ -75,11 +75,11 @@
   <circle r="4" fill="#0891b2" opacity="0.85"><animateMotion dur="2s" begin="6.6s" repeatCount="indefinite" path="M440,146 L163,146"/></circle>
   <circle r="2.5" fill="#22d3ee" opacity="0.85"><animateMotion dur="2s" begin="6.9s" repeatCount="indefinite" path="M440,146 L163,146"/></circle>
 
-  <circle cx="480" cy="140" r="30" fill="#7c3aed" opacity="0"><animate attributeName="r" values="30;66;30" dur="3s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.35;0;0.35" dur="3s" repeatCount="indefinite"/></circle>
+  <circle cx="480" cy="140" r="30" fill="#7c3aed" opacity="0"><animate attributeName="r" values="30;66;30" dur="3s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.15;0;0.15" dur="3s" repeatCount="indefinite"/></circle>
 
   <g transform="translate(480,98)">
     <rect x="-32" y="-10" width="64" height="20" rx="10" fill="#ede9fe" stroke="#8b5cf6" stroke-width="1"/>
-    <text x="0" y="4" text-anchor="middle" font-family="system-ui" font-size="8" class="badge-text-purple" font-weight="700">IP changes</text>
+    <text x="0" y="3" text-anchor="middle" font-family="system-ui" font-size="8" class="badge-text-purple" font-weight="700">IP changes</text>
   </g>
 
   <!-- Client (Laptop) -->

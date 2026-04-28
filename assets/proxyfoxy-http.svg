@@ -29,10 +29,10 @@
 
   /* Dark theme */
   @media (prefers-color-scheme: dark) {
-    .title-text { fill: #e2e8f0; }
+    .title-text { fill: #aaafb6; }
     .subtitle-text { fill: #94a3b8; }
     .label-text { fill: #cbd5e1; }
-    .icon-fill { fill: #e2e8f0; }
+    .icon-fill { fill: #aaafb6; }
     .flow-label { fill: #94a3b8; }
     .ip-bg-client { fill: #475569; }
     .ip-bg-proxy { fill: #3b82f6; }
@@ -81,7 +81,7 @@
   <circle r="2.5" fill="#4ade80" opacity="0.85"><animateMotion dur="2s" begin="6.9s" repeatCount="indefinite" path="M440,146 L163,146"/></circle>
 
   <!-- Pulsing glow at proxy -->
-  <circle cx="480" cy="140" r="30" fill="#2563eb" opacity="0"><animate attributeName="r" values="30;66;30" dur="3s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.35;0;0.35" dur="3s" repeatCount="indefinite"/></circle>
+  <circle cx="480" cy="140" r="30" fill="#2563eb" opacity="0"><animate attributeName="r" values="30;66;30" dur="3s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.15;0;0.15" dur="3s" repeatCount="indefinite"/></circle>
 
   <!-- IP change badge -->
   <g transform="translate(480,98)">
