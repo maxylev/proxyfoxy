@@ -1077,17 +1077,24 @@ function runProviderClient(host, port, quiet) {
           `══════════════════════════════════════════════════════════`,
         );
 
-        let squidStatus = osInfo.isServiceRunning("squid")
-          ? "🟢 RUNNING"
-          : "🔴 STOPPED";
-        let danteStatus = osInfo.isServiceRunning(
-          osInfo.isDebian ? "danted" : "sockd",
+        function portOrService(port, serviceName) {
+          if (osInfo && osInfo.isServiceRunning(serviceName)) return true;
+          return runQuiet(`nc -z 127.0.0.1 ${port} 2>/dev/null`);
+        }
+
+        let squidStatus = portOrService(
+          db.proxies.find((p) => p.type === "http")?.port || 0,
+          "squid",
         )
           ? "🟢 RUNNING"
           : "🔴 STOPPED";
-        let masterStatus = osInfo.isServiceRunning(
-          "proxyfoxy-residential-master",
+        let danteStatus = portOrService(
+          db.proxies.find((p) => p.type === "socks5")?.port || 0,
+          osInfo?.isDebian ? "danted" : "sockd",
         )
+          ? "🟢 RUNNING"
+          : "🔴 STOPPED";
+        let masterStatus = portOrService(9000, "proxyfoxy-residential-master")
           ? "🟢 RUNNING"
           : "🔴 STOPPED";
 
@@ -1120,7 +1127,8 @@ function runProviderClient(host, port, quiet) {
         if (resState.length > 0) {
           console.log(`\n🏠 RESIDENTIAL PROVIDER POOL:`);
           const byCountry = {};
-          let totalRx = 0, totalTx = 0;
+          let totalRx = 0,
+            totalTx = 0;
           resState.forEach((node) => {
             if (!byCountry[node.country])
               byCountry[node.country] = { nodes: [], rx: 0, tx: 0 };
@@ -1321,6 +1329,16 @@ function runProviderClient(host, port, quiet) {
               { stdio: "inherit" },
             );
           } else if (protocol === "residential") {
+            db.proxies = db.proxies.filter((p) => p.port != dPort);
+            db.proxies.push({
+              type: "residential",
+              user: dUser,
+              pass: dPass,
+              port: dPort,
+              country: flags.country,
+              limit: flags.limit,
+            });
+            saveDb();
             serveResidentialMaster();
           }
         }

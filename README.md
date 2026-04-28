@@ -271,20 +271,68 @@ Removes all proxies, databases, firewall rules, and service files.
 
 ## 🐳 Docker Container Usage
 
-If you prefer containers, ProxyFoxy has an optimized Alpine-based Docker image available.
+If you prefer containers, ProxyFoxy has an optimized Alpine-based Docker image available. Each container runs exactly one proxy — map the port with `-p`.
+
+### HTTP Proxy
 
 ```bash
-# Run HTTP Proxy
 docker run -d -p 8000:8000 --name http-proxy ghcr.io/maxylev/proxyfoxy:latest myuser mypass 8000 http
+```
 
-# Run SOCKS5 Proxy
+Use: `curl -x http://myuser:mypass@<VPS_IP>:8000 https://example.com`
+
+### SOCKS5 Proxy
+
+```bash
 docker run -d -p 8001:8001 --name socks-proxy ghcr.io/maxylev/proxyfoxy:latest myuser mypass 8001 socks5
+```
 
-# Run MTProto Proxy
+Use: `curl --socks5-hostname myuser:mypass@<VPS_IP>:8001 https://example.com`
+
+### MTProto Proxy (Telegram)
+
+```bash
 docker run -d -p 8002:8002 --name mtproto-proxy ghcr.io/maxylev/proxyfoxy:latest myuser mtpass 8002 mtproto
+```
 
-# Run Residential Master
-docker run -d -p 8003:8003 -p 9000:9000 --name residential-proxy ghcr.io/maxylev/proxyfoxy:latest res_user res_pass 8003 residential
+The generated `tg://proxy?...` link appears in the container logs: `docker logs mtproto-proxy`
+
+### Residential Master
+
+Residential mode runs **two ports** inside one container:
+
+- **Port 9000** (Gateway) — where Home PC providers connect
+- **Port 8003** (Consumer) — a SOCKS5 proxy that relays traffic through providers
+
+Both ports must be published, and you can pass `--country=` / `--limit=` flags:
+
+```bash
+docker run -d \
+  -p 8003:8003 \
+  -p 9000:9000 \
+  --name residential-proxy \
+  ghcr.io/maxylev/proxyfoxy:latest \
+  res_user res_pass 8003 residential --country=US --limit=2GB
+```
+
+Then on a **Home PC**, run the provider to donate your IP:
+
+```bash
+npx proxyfoxy provider <VPS_IP>:9000
+```
+
+Consumers connect via **SOCKS5**:
+
+```bash
+curl --socks5-hostname res_user:res_pass@<VPS_IP>:8003 https://icanhazip.com
+```
+
+Manage providers from inside the container:
+
+```bash
+docker exec residential-proxy proxyfoxy providers
+docker exec residential-proxy proxyfoxy providers block 1.2.3.4 suspicious
+docker exec residential-proxy proxyfoxy providers whitelist 5.6.7.8
 ```
 
 ---
