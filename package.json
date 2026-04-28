@@ -1,10 +1,30 @@
 {
   "name": "proxyfoxy",
-  "version": "1.0.6",
-  "description": "The ultimate 1-command proxy server manager",
+  "version": "1.1.0",
+  "description": "Distributed Multi-Protocol Proxy Manager with Residential Node Networking",
   "bin": {
     "proxyfoxy": "./index.js"
   },
+  "scripts": {
+    "test": "node test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/maxylev/proxyfoxy.git"
+  },
+  "keywords": [
+    "proxy",
+    "squid",
+    "socks5",
+    "dante",
+    "mtproto",
+    "residential-proxy",
+    "vpn",
+    "networking"
+  ],
   "author": "Max Ymlev",
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }

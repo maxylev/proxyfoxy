@@ -1,6 +1,10 @@
 FROM alpine:latest
-RUN apk add --no-cache nodejs squid apache2-utils
+
+RUN apk add --no-cache nodejs npm squid apache2-utils dante-server curl tar iptables iproute2 bash
+
 WORKDIR /app
 COPY package.json index.js ./
-RUN chmod +x /app/index.js && ln -s /app/index.js /usr/bin/proxyfoxy
-ENTRYPOINT ["node", "/app/index.js", "docker"]
+
+RUN chmod +x /app/index.js && npm link
+
+ENTRYPOINT ["proxyfoxy", "docker"]

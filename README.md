@@ -1,100 +1,100 @@
 # 🦊 ProxyFoxy
 
 [![NPM Version](https://img.shields.io/npm/v/proxyfoxy?style=flat-square&color=cb3837)](https://www.npmjs.com/package/proxyfoxy)
-[![Docker Image Version](https://img.shields.io/github/v/release/maxylev/proxyfoxy?label=Docker%20Image&style=flat-square&color=0db7ed)](https://github.com/maxylev/proxyfoxy/packages)
+[![Tests](https://img.shields.io/github/actions/workflow/status/maxylev/proxyfoxy/test.yml?label=Tests&style=flat-square)](https://github.com/maxylev/proxyfoxy/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
-**The ultimate 1-command cross-platform proxy server manager.**
+**The ultimate cross-platform, multi-protocol proxy manager featuring real-time analytics and a Built-in Distributed Residential Network.**
 
-ProxyFoxy is a zero-dependency Node.js CLI tool that instantly installs, configures, and manages authenticated HTTP proxies (`host:port:user:pass`) using Squid.
-
-Stop wrestling with Linux config files, permissions, and firewall rules. ProxyFoxy automatically detects your OS, installs the requirements, opens the correct firewall ports, and hands you a ready-to-paste proxy string in seconds.
+Instantly install, configure, and manage authenticated proxies on your VPS. ProxyFoxy automatically handles OS detection, package management (`Squid`, `Dante`, `MTG`), kernel-level firewall configurations, and real-time traffic data tracking.
 
 ---
 
-## 🚀 Quick Start
+## ✨ Features
 
-You don't need to manually install or clone anything! Connect to your fresh VPS and run it instantly via `npx` (requires Node.js):
+- **4 Protocols Supported Native:** HTTP, SOCKS5, MTProto, and Custom Residential.
+- **Zero-Overhead Analytics:** Uses kernel `iptables` to track proxy traffic (Sent/Received GB) with zero CPU strain on Node.js.
+- **Create Your Own Residential Network:** Link home computers to your VPS and route consumer traffic strictly through designated geographic locations.
+- **Hot-Reloading:** Change passwords and add new proxies without disconnecting currently active users.
+- **Instant Output:** Formats proxies beautifully into `user:pass@ip:port` for immediate copy-pasting.
+
+---
+
+## 🚀 Standard Usage (VPS Setup)
+
+Connect to your VPS and run `proxyfoxy` instantly via `npx` (Requires Node.js):
 
 ```bash
 npx proxyfoxy add myuser supersecret123 8000
 ```
 
-**What happens behind the scenes?**
+_(By default, this installs a standard HTTP web proxy)._
 
-1. Detects your Linux distribution (Ubuntu, Debian, CentOS, RHEL, Alpine).
-2. Installs `squid` and required utilities natively.
-3. Creates an encrypted user account.
-4. Opens Port `8000` in your firewall (`ufw` or `firewalld`).
-5. Starts the service and outputs: `🟢 192.168.1.50:8000:myuser:supersecret123`
+### Supported Architectures
+
+You can specify the protocol flag to deploy different proxy architectures natively:
+
+- **HTTP (Squid):** `npx proxyfoxy add myuser mypass 8000 http`
+- **SOCKS5 (Dante):** `npx proxyfoxy add myuser mypass 8001 socks5`
+- **MTProto (Telegram):** `npx proxyfoxy add myuser skip 8002 mtproto`
 
 ---
 
-## 🛠️ CLI Command Reference
+## 🏠 The Residential Relay Network
 
-Manage multiple proxies on the same server easily. Run these commands anytime:
+ProxyFoxy allows you to create your own distributed residential proxy pool (similar to BrightData or Honeygain). Home PCs connect to your Master VPS and donate their IPs. Consumers connect to your VPS, which invisibly relays the traffic to the Home PC.
 
-### ➕ Manage Proxies
+**1. Create a Master Node on your VPS**
+You can specify a required country code (`--country=XX`) and a strict data limit (`--limit=XGB`). If the data limit is hit, connections are instantly severed.
 
-| Command                                  | Description                                                         |
-| ---------------------------------------- | ------------------------------------------------------------------- |
-| `npx proxyfoxy add <user> <pass> <port>` | Installs dependencies (if needed), adds a user, and opens a port.   |
-| `npx proxyfoxy change <user> <newpass>`  | Changes the password for an existing proxy user instantly.          |
-| `npx proxyfoxy delete <user> <port>`     | Deletes a user account and cleanly closes the port in the firewall. |
+```bash
+npx proxyfoxy add res_user res_pass 8003 residential --country=US --limit=2GB
+```
 
-### 📊 Monitor Setup
+**2. Run the Provider Script on a Home PC**
+Anyone can run this locally to inject themselves into the proxy pool. ProxyFoxy will auto-detect the Home PC's country using IP APIs.
 
-| Command                | Description                                                     |
-| ---------------------- | --------------------------------------------------------------- |
-| `npx proxyfoxy list`   | Beautifully lists all active proxy users and open ports.        |
-| `npx proxyfoxy status` | Checks if the proxy server is currently `running` or `stopped`. |
+```bash
+npx proxyfoxy provider res_user:res_pass@<VPS_IP>:9000
+```
 
-### ⚙️ Server Controls
+##### How to run it in the background / on boot?
 
-| Command                   | Description                                                                 |
-| ------------------------- | --------------------------------------------------------------------------- |
-| `npx proxyfoxy stop`      | Temporarily stops the proxy service (rejects all traffic).                  |
-| `npx proxyfoxy start`     | Starts the proxy service back up.                                           |
-| `npx proxyfoxy uninstall` | **Danger:** Completely removes Squid, wipes passwords, and deletes configs. |
+```bash
+npm install -g pm2
+pm2 start "npx proxyfoxy provider user:pass@ip:9000" --name "proxy-exit-node"
+pm2 startup
+```
+
+**3. Consume the Proxy**
+Set your browser extension or scraper to use the proxy generated in Step 1 (`VPS_IP:8003`).
+
+---
+
+## 📊 CLI Command Reference & Analytics
+
+Manage multiple proxies and track bandwidth dynamically.
+
+| Command                                                      | Description                                                                                       |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `npx proxyfoxy add <u/p/port> [proto] [--country] [--limit]` | Installs proxies, limits bandwidth, opens firewalls, and boots daemons.                           |
+| `npx proxyfoxy change <user> <newpass>`                      | Live-updates a user's password without dropping connections.                                      |
+| `npx proxyfoxy delete <user> <port>`                         | Safely deletes the user and permanently closes the firewall port.                                 |
+| `npx proxyfoxy list`                                         | Lists all active proxies in a 1-click copy-paste format.                                          |
+| `npx proxyfoxy status`                                       | **Analytics Dashboard:** View Sent/Received GB per Port, active IP pools, and country breakdowns. |
+| `npx proxyfoxy stop/start [port/proto]`                      | Halt or resume specific proxies.                                                                  |
+| `npx proxyfoxy uninstall`                                    | **Nuclear Option:** Wipes all proxies, databases, and dependencies.                               |
 
 ---
 
 ## 🐳 Docker Container Usage
 
-If you prefer containers, ProxyFoxy has a highly optimized, ~35MB Alpine-based Docker image available on the GitHub Container Registry.
-
-**Run the proxy in the background:**
-_(Note: We map a range of ports `-p 8000-8010:8000-8010` so you can add more proxies later dynamically!)_
+If you prefer containers, ProxyFoxy has an optimized Alpine-based Docker image available.
 
 ```bash
-docker run -d -p 8000-8010:8000-8010 --name my-proxy ghcr.io/maxylev/proxyfoxy myuser mypass 8000
+# Run SOCKS5 Proxy dynamically
+docker run -d -p 8001:8001 --name socks-proxy ghcr.io/maxylev/proxyfoxy:latest myuser mypass 8001 socks5
 ```
-
-**Manage your running container on the fly:**
-You can interact with your proxy dynamically without restarting the container:
-
-```bash
-docker exec -it my-proxy proxyfoxy list
-docker exec -it my-proxy proxyfoxy change myuser newpassword
-docker exec -it my-proxy proxyfoxy add user2 pass2 8001
-```
-
----
-
-## 💡 How to Use Your Proxy
-
-Once ProxyFoxy finishes running, simply paste the output into your browser, web scraper, or proxy manager.
-
-**Standard Format:**
-`IP_ADDRESS:PORT:USERNAME:PASSWORD`
-
-**Test your proxy via cURL:**
-
-```bash
-curl -x http://myuser:supersecret123@192.168.1.50:8000 https://ifconfig.me
-```
-
-_(If successful, this will return your proxy server's IP address instead of your home IP)._
 
 ---
 
