@@ -1,5 +1,7 @@
 # 🦊 ProxyFoxy
 
+<p align="center"><img src="https://raw.githubusercontent.com/maxylev/proxyfoxy/refs/heads/main/assets/scr.png" alt="ProxyFoxy" width="500"></p>
+
 [![NPM Version](https://img.shields.io/npm/v/proxyfoxy?style=flat-square&color=cb3837)](https://www.npmjs.com/package/proxyfoxy)
 [![Tests](https://img.shields.io/github/actions/workflow/status/maxylev/proxyfoxy/test.yml?label=Tests&style=flat-square)](https://github.com/maxylev/proxyfoxy/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)

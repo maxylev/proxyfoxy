@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ProxyFoxy Settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <nav class="sidebar">
+        <div class="sidebar-logo">
+          <svg width="32" height="32" viewBox="0 0 512 512" fill="#F97316">
+            <path
+              d="M493.352,274.138c-21.598-14.215-36.29-38.338-51.847-63.876c-1.825-2.997-3.658-6.003-5.51-9.013 c29.609-83.63-10.549-150.865-12.323-153.764l-10.701-17.495l-69.42,80.685c-25.027-10.93-53.992-16.294-87.551-16.294 c-33.558,0-62.524,5.365-87.551,16.294L99.028,29.989L88.327,47.484c-1.772,2.899-41.932,70.136-12.323,153.764 c-1.852,3.01-3.685,6.017-5.51,9.013c-15.556,25.539-30.25,49.661-51.847,63.876L0,286.412l18.454,12.562 c1.268,0.864,127.147,86.651,155.859,115.362c9.083,9.084,16.313,18.508,23.307,27.622c15.804,20.598,30.732,40.055,58.38,40.055 s42.576-19.457,58.38-40.055c6.993-9.114,14.223-18.538,23.307-27.622c28.711-28.711,154.59-114.499,155.859-115.362 l18.455-12.562L493.352,274.138z"
+            />
+          </svg>
+          <span>ProxyFoxy</span>
+        </div>
+        <ul class="nav-links">
+          <li>
+            <a href="#" class="nav-link active" data-section="proxies">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="12" cy="12" r="3" />
+                <path d="M2 12h4M18 12h4M12 2v4M12 18v4" />
+              </svg>
+              Proxies
+            </a>
+          </li>
+          <li>
+            <a href="#" class="nav-link" data-section="siterules">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"
+                />
+                <path
+                  d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
+                />
+              </svg>
+              Site Rules
+            </a>
+          </li>
+          <li>
+            <a href="#" class="nav-link" data-section="settings">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="12" cy="12" r="3" />
+                <path
+                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+                />
+              </svg>
+              Settings
+            </a>
+          </li>
+        </ul>
+      </nav>
+
+      <main class="content">
+        <!-- ─── Proxies Section ──────────────────────────────────── -->
+        <section id="section-proxies" class="section active">
+          <div class="section-header">
+            <h2>Proxies</h2>
+            <button class="btn-primary" id="addProxyBtn2">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              Add Proxy
+            </button>
+          </div>
+
+          <div class="proxy-list" id="proxyList">
+            <div class="empty-state" id="emptyProxies">
+              <svg
+                width="48"
+                height="48"
+                viewBox="0 0 512 512"
+                fill="#F97316"
+                opacity="0.3"
+              >
+                <path
+                  d="M493.352,274.138c-21.598-14.215-36.29-38.338-51.847-63.876c-1.825-2.997-3.658-6.003-5.51-9.013 c29.609-83.63-10.549-150.865-12.323-153.764l-10.701-17.495l-69.42,80.685c-25.027-10.93-53.992-16.294-87.551-16.294 c-33.558,0-62.524,5.365-87.551,16.294L99.028,29.989L88.327,47.484c-1.772,2.899-41.932,70.136-12.323,153.764 c-1.852,3.01-3.685,6.017-5.51,9.013c-15.556,25.539-30.25,49.661-51.847,63.876L0,286.412l18.454,12.562 c1.268,0.864,127.147,86.651,155.859,115.362c9.083,9.084,16.313,18.508,23.307,27.622c15.804,20.598,30.732,40.055,58.38,40.055 s42.576-19.457,58.38-40.055c6.993-9.114,14.223-18.538,23.307-27.622c28.711-28.711,154.59-114.499,155.859-115.362 l18.455-12.562L493.352,274.138z"
+                />
+              </svg>
+              <p>No proxies yet</p>
+              <span>Click "Add Proxy" to get started</span>
+            </div>
+          </div>
+
+          <div class="add-form" id="addProxyFormFull" style="display: none">
+            <h3>New Proxy</h3>
+            <div class="form-grid">
+              <div class="form-group full">
+                <label
+                  >Quick Add
+                  <span class="optional"
+                    >(paste user:pass@host:port)</span
+                  ></label
+                >
+                <input
+                  type="text"
+                  id="optProxyQuickPaste"
+                  placeholder="user:pass@host:port or host:port"
+                />
+              </div>
+              <div class="form-group">
+                <label>Name <span class="optional">(optional)</span></label>
+                <input type="text" id="optProxyName" placeholder="My Proxy" />
+              </div>
+              <div class="form-group">
+                <label>Protocol</label>
+                <div class="protocol-pills" id="optProtocolPills">
+                  <button type="button" class="pill active" data-proto="http">
+                    HTTP
+                  </button>
+                  <button type="button" class="pill" data-proto="socks5">
+                    SOCKS5
+                  </button>
+                  <button type="button" class="pill" data-proto="residential">
+                    Residential
+                  </button>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Host</label>
+                <input
+                  type="text"
+                  id="optProxyHost"
+                  placeholder="203.0.113.50"
+                />
+              </div>
+              <div class="form-group">
+                <label>Port</label>
+                <input
+                  type="number"
+                  id="optProxyPort"
+                  placeholder="8000"
+                  min="1"
+                  max="65535"
+                />
+              </div>
+              <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="optProxyUser" placeholder="Optional" />
+              </div>
+              <div class="form-group">
+                <label>Password</label>
+                <input
+                  type="password"
+                  id="optProxyPass"
+                  placeholder="Optional"
+                />
+              </div>
+            </div>
+            <div class="form-actions">
+              <button class="btn-secondary" id="cancelAddProxy">Cancel</button>
+              <button class="btn-primary" id="saveAddProxy">Save Proxy</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── Site Rules Section ───────────────────────────────── -->
+        <section id="section-siterules" class="section">
+          <div class="section-header">
+            <h2>Per-Site Rules</h2>
+            <button class="btn-primary" id="addRuleBtn">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              Add Rule
+            </button>
+          </div>
+          <p class="section-desc">
+            Route specific websites through designated proxies or bypass the
+            proxy entirely.
+          </p>
+          <div class="rules-list" id="rulesList">
+            <div class="empty-state" id="emptyRules">
+              <p>No site rules configured</p>
+              <span>Rules override the global proxy for specific domains</span>
+            </div>
+          </div>
+          <div class="add-form" id="addRuleForm" style="display: none">
+            <h3>New Rule</h3>
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Domain</label>
+                <input type="text" id="ruleDomain" placeholder="example.com" />
+              </div>
+              <div class="form-group">
+                <label>Use Proxy</label>
+                <select id="ruleProxy">
+                  <option value="direct">Direct (no proxy)</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-actions">
+              <button class="btn-secondary" id="cancelAddRule">Cancel</button>
+              <button class="btn-primary" id="saveAddRule">Save Rule</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── Settings Section ─────────────────────────────────── -->
+        <section id="section-settings" class="section">
+          <div class="section-header">
+            <h2>Settings</h2>
+          </div>
+          <div class="settings-card">
+            <div class="setting-row">
+              <div class="setting-info">
+                <div class="setting-name">Theme</div>
+                <div class="setting-desc">
+                  Switch between dark and light appearance
+                </div>
+              </div>
+              <div class="theme-toggle" id="themeToggle">
+                <button class="theme-option active" data-theme="dark">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                  </svg>
+                  Dark
+                </button>
+                <button class="theme-option" data-theme="light">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <circle cx="12" cy="12" r="5" />
+                    <line x1="12" y1="1" x2="12" y2="3" />
+                    <line x1="12" y1="21" x2="12" y2="23" />
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                    <line x1="1" y1="12" x2="3" y2="12" />
+                    <line x1="21" y1="12" x2="23" y2="12" />
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                  </svg>
+                  Light
+                </button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info">
+                <div class="setting-name">Notifications</div>
+                <div class="setting-desc">
+                  Show toast notifications on proxy changes
+                </div>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="notifToggle" checked />
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+          </div>
+          <div class="settings-card">
+            <div class="setting-row">
+              <div class="setting-info">
+                <div class="setting-name danger">Danger Zone</div>
+                <div class="setting-desc">
+                  Remove all proxies, rules, and reset settings
+                </div>
+              </div>
+              <button class="btn-danger" id="resetAllBtn">Reset All</button>
+            </div>
+          </div>
+          <div class="about">
+            <span class="about-version">ProxyFoxy v1.1.0</span>
+            <a
+              href="https://github.com/maxylev/proxyfoxy"
+              target="_blank"
+              class="about-link"
+              >GitHub</a
+            >
+          </div>
+        </section>
+      </main>
+    </div>
+    <div class="toast" id="toast"></div>
+    <script src="options.js"></script>
+  </body>
+</html>

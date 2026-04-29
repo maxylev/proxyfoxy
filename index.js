@@ -348,25 +348,47 @@ function configureFirewall(port, osInfo, remove = false) {
   } catch (e) {}
 }
 
+const portTraffic = new Map();
+
+function trackPortRx(port, bytes) {
+  if (!portTraffic.has(port)) portTraffic.set(port, { rx: 0, tx: 0 });
+  portTraffic.get(port).rx += bytes;
+}
+
+function trackPortTx(port, bytes) {
+  if (!portTraffic.has(port)) portTraffic.set(port, { rx: 0, tx: 0 });
+  portTraffic.get(port).tx += bytes;
+}
+
+function getPortTraffic(port) {
+  return portTraffic.get(port) || { rx: 0, tx: 0 };
+}
+
 function trackTraffic(port) {
-  let rx = 0,
-    tx = 0;
+  let rx = 0, tx = 0;
   try {
     const i = execSync(
       `iptables -nxvL INPUT | grep -w "dpt:${port}" | head -n 1 || true`,
       { stdio: "pipe" },
-    )
-      .toString()
-      .trim();
+    ).toString().trim();
     if (i) rx = parseInt(i.split(/\s+/)[1]) || 0;
     const o = execSync(
       `iptables -nxvL OUTPUT | grep -w "spt:${port}" | head -n 1 || true`,
       { stdio: "pipe" },
-    )
-      .toString()
-      .trim();
+    ).toString().trim();
     if (o) tx = parseInt(o.split(/\s+/)[1]) || 0;
   } catch (e) {}
+  const appData = getPortTraffic(port);
+  let fileData = { rx: 0, tx: 0 };
+  try {
+    const TRAFFIC_PATH = "/var/lib/proxyfoxy/traffic.json";
+    if (fs.existsSync(TRAFFIC_PATH)) {
+      const all = JSON.parse(fs.readFileSync(TRAFFIC_PATH, "utf8"));
+      if (all[port]) fileData = all[port];
+    }
+  } catch (e) {}
+  rx = Math.max(rx, appData.rx, fileData.rx);
+  tx = Math.max(tx, appData.tx, fileData.tx);
   return { rx, tx };
 }
 
@@ -379,6 +401,31 @@ function serveResidentialMaster(gatewayPort) {
   let providers = [];
   const consumerServers = new Map();
   const providerErrors = new Map();
+  const TRAFFIC_PATH = "/var/lib/proxyfoxy/traffic.json";
+
+  function loadTrafficFromFile() {
+    try {
+      if (fs.existsSync(TRAFFIC_PATH)) {
+        const data = JSON.parse(fs.readFileSync(TRAFFIC_PATH, "utf8"));
+        for (const [k, v] of Object.entries(data)) {
+          portTraffic.set(parseInt(k), v);
+        }
+      }
+    } catch (e) {}
+  }
+
+  function syncTrafficToFile() {
+    try {
+      const dir = "/var/lib/proxyfoxy";
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const data = {};
+      portTraffic.forEach((v, k) => { data[k] = v; });
+      const tmp = `${TRAFFIC_PATH}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(data));
+      fs.renameSync(tmp, TRAFFIC_PATH);
+    } catch (e) {}
+  }
+
   const AUTO_BLACKLIST_THRESHOLD = 5;
   const AUTO_BLACKLIST_WINDOW = 600000;
 
@@ -455,8 +502,11 @@ function serveResidentialMaster(gatewayPort) {
         }
       });
     } catch (e) {}
+    syncTrafficToFile();
     syncStateToFile();
   }
+
+  loadTrafficFromFile();
 
   setInterval(syncServers, 10000);
   syncServers();
@@ -589,6 +639,21 @@ function serveResidentialMaster(gatewayPort) {
   }
 
   function handleConsumer(socket, proxyConf) {
+    const consumerPort = proxyConf.port;
+
+    socket.on("data", (chunk) => {
+      trackPortRx(consumerPort, chunk.length);
+    });
+
+    const origWrite = socket.write.bind(socket);
+    socket.write = function (data, ...args) {
+      if (data) {
+        const len = Buffer.isBuffer(data) ? data.length : Buffer.byteLength(data);
+        trackPortTx(consumerPort, len);
+      }
+      return origWrite(data, ...args);
+    };
+
     socket.once("data", (firstChunk) => {
       if (firstChunk[0] === 0x05) {
         handleSOCKS5(socket, proxyConf, firstChunk);

@@ -1,6 +1,6 @@
 {
   "name": "proxyfoxy",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "Distributed Multi-Protocol Proxy Manager with Residential Node Networking",
   "bin": {
     "proxyfoxy": "./index.js"

@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=380" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="container">
+      <!-- ─── Header ────────────────────────────────────────────── -->
+      <div class="header">
+        <div class="logo">
+          <svg width="28" height="28" viewBox="0 0 512 512" fill="#F97316">
+            <path
+              d="M493.352,274.138c-21.598-14.215-36.29-38.338-51.847-63.876c-1.825-2.997-3.658-6.003-5.51-9.013 c29.609-83.63-10.549-150.865-12.323-153.764l-10.701-17.495l-69.42,80.685c-25.027-10.93-53.992-16.294-87.551-16.294 c-33.558,0-62.524,5.365-87.551,16.294L99.028,29.989L88.327,47.484c-1.772,2.899-41.932,70.136-12.323,153.764 c-1.852,3.01-3.685,6.017-5.51,9.013c-15.556,25.539-30.25,49.661-51.847,63.876L0,286.412l18.454,12.562 c1.268,0.864,127.147,86.651,155.859,115.362c9.083,9.084,16.313,18.508,23.307,27.622c15.804,20.598,30.732,40.055,58.38,40.055 s42.576-19.457,58.38-40.055c6.993-9.114,14.223-18.538,23.307-27.622c28.711-28.711,154.59-114.499,155.859-115.362 l18.455-12.562L493.352,274.138z"
+            />
+          </svg>
+        </div>
+        <h1>ProxyFoxy</h1>
+        <button id="settingsBtn" class="icon-btn" title="Settings">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <!-- ─── Status Circle ──────────────────────────────────── -->
+      <div class="status-ring" id="statusRing">
+        <svg viewBox="0 0 200 200" class="ring-svg">
+          <defs>
+            <linearGradient id="disconnectedGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#4b5563" />
+              <stop offset="100%" stop-color="#6b7280" />
+            </linearGradient>
+            <linearGradient id="connectedGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#10b981" />
+              <stop offset="100%" stop-color="#34d399" />
+            </linearGradient>
+            <filter id="glow">
+              <feGaussianBlur stdDeviation="6" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+          <circle cx="100" cy="100" r="85" class="ring-bg" />
+          <circle cx="100" cy="100" r="85" class="ring-glow" id="ringGlow" />
+          <circle
+            cx="100"
+            cy="100"
+            r="85"
+            class="ring-progress"
+            id="ringProgress"
+          />
+        </svg>
+        <div class="status-center">
+          <button id="toggleBtn" class="power-btn" title="Connect / Disconnect">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+            >
+              <path d="M12 2v8" />
+              <path d="M18.36 6.64A9 9 0 1 1 5.64 6.64" />
+            </svg>
+          </button>
+          <div class="status-label" id="statusLabel">Disconnected</div>
+          <div class="status-ip" id="statusIp">Select a proxy</div>
+        </div>
+      </div>
+
+      <!-- ─── Stats Row ─────────────────────────────────────────── -->
+      <div class="stats">
+        <div class="stat-item">
+          <span class="stat-value" id="statUploaded">0 B</span>
+          <span class="stat-label">↑ Upload</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-value" id="statDownloaded">0 B</span>
+          <span class="stat-label">↓ Download</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-value" id="statUptime">0s</span>
+          <span class="stat-label">⏱ Uptime</span>
+        </div>
+      </div>
+
+      <!-- ─── Proxy Selector ────────────────────────────────────── -->
+      <div class="proxy-selector">
+        <div class="selector-label">Active Proxy <span class="indicator" id="proxyIndicator"></span></div>
+        <select id="proxySelect">
+          <option value="">No proxy (Direct)</option>
+        </select>
+      </div>
+
+      <!-- ─── Site Rule ─────────────────────────────────────────── -->
+      <div class="site-rule" id="siteRule">
+        <div class="site-rule-header">
+          <span class="site-rule-label">Current Site Rule</span>
+          <span class="site-rule-domain" id="currentDomain">—</span>
+        </div>
+        <select id="siteRuleSelect">
+          <option value="">Use global proxy</option>
+          <option value="direct">Direct (no proxy)</option>
+        </select>
+      </div>
+
+      <!-- ─── Quick Actions ─────────────────────────────────────── -->
+      <div class="quick-actions">
+        <button class="action-btn" id="addProxyBtn">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          Add Proxy
+        </button>
+        <button class="action-btn" id="manageBtn">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <rect x="3" y="3" width="7" height="7" />
+            <rect x="14" y="3" width="7" height="7" />
+            <rect x="3" y="14" width="7" height="7" />
+            <rect x="14" y="14" width="7" height="7" />
+          </svg>
+          Manage
+        </button>
+      </div>
+    </div>
+
+    <!-- ─── Add-Proxy Modal ──────────────────────────────────────── -->
+    <div class="modal-overlay" id="modalOverlay" style="display: none">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Add Proxy</h2>
+          <button class="icon-btn modal-close" id="modalClose">×</button>
+        </div>
+        <form id="addProxyForm">
+          <div class="form-group">
+            <label
+              >Quick Add
+              <span class="optional">(paste user:pass@host:port)</span></label
+            >
+            <input
+              type="text"
+              id="proxyQuickPaste"
+              placeholder="user:pass@host:port or host:port"
+            />
+          </div>
+          <div class="form-group">
+            <label>Name <span class="optional">(optional)</span></label>
+            <input type="text" id="proxyName" placeholder="My Proxy" />
+          </div>
+          <div class="form-group">
+            <label>Protocol</label>
+            <div class="protocol-pills">
+              <button type="button" class="pill active" data-proto="http">
+                HTTP
+              </button>
+              <button type="button" class="pill" data-proto="socks5">
+                SOCKS5
+              </button>
+              <button type="button" class="pill" data-proto="residential">
+                Residential
+              </button>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label>Host</label>
+              <input
+                type="text"
+                id="proxyHost"
+                placeholder="203.0.113.50"
+                required
+              />
+            </div>
+            <div class="form-group" style="width: 80px">
+              <label>Port</label>
+              <input
+                type="number"
+                id="proxyPort"
+                placeholder="8000"
+                min="1"
+                max="65535"
+                required
+              />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label>Username</label>
+              <input type="text" id="proxyUser" placeholder="Optional" />
+            </div>
+            <div class="form-group flex-1">
+              <label>Password</label>
+              <input type="password" id="proxyPass" placeholder="Optional" />
+            </div>
+          </div>
+          <button type="submit" class="btn-primary">Add Proxy</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+    <script src="popup.js"></script>
+  </body>
+</html>
