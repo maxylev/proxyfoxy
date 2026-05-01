@@ -14,19 +14,28 @@ const rawArgs = process.argv.slice(2);
 const command = rawArgs[0];
 const args = [];
 const flags = { country: null, limit: null, gateway: 9000 };
+const PACKAGE_VERSION = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(`${__dirname}/package.json`, "utf8")).version;
+  } catch (e) {
+    return "0.0.0";
+  }
+})();
+
+if (typeof module !== "undefined") {
+  module.exports = { parseBytes, formatBytes, parsePortStrict };
+}
 
 for (let i = 1; i < rawArgs.length; i++) {
-  if (rawArgs[i].startsWith("--country="))
-    flags.country = rawArgs[i].split("=")[1].toUpperCase();
-  else if (rawArgs[i].startsWith("--limit="))
-    flags.limit = parseBytes(rawArgs[i].split("=")[1]);
-  else if (rawArgs[i].startsWith("--gateway="))
-    flags.gateway = parseInt(rawArgs[i].split("=")[1]);
+  if (rawArgs[i].startsWith("--country=")) flags.country = rawArgs[i].split("=")[1].toUpperCase();
+  else if (rawArgs[i].startsWith("--limit=")) flags.limit = parseBytes(rawArgs[i].split("=")[1]);
+  else if (rawArgs[i].startsWith("--gateway=")) flags.gateway = rawArgs[i].split("=")[1];
   else args.push(rawArgs[i]);
 }
 
-const run = (cmd, showOutput = true) =>
-  execSync(cmd, { stdio: showOutput ? "inherit" : "ignore" });
+const SUPPORTED_PROTOCOLS = new Set(["http", "socks5", "mtproto", "residential"]);
+
+const run = (cmd, showOutput = true) => execSync(cmd, { stdio: showOutput ? "inherit" : "ignore" });
 const runQuiet = (cmd) => {
   try {
     execSync(cmd, { stdio: "ignore" });
@@ -36,59 +45,57 @@ const runQuiet = (cmd) => {
   }
 };
 
-function printHelp() {
-  console.log(`
-🦊 ProxyFoxy - Distributed Proxy Manager
+const rule = (width = 58) => "═".repeat(width);
 
-Usage:
-  npx proxyfoxy add <user> <pass> <port>[protocol] [--country=US] [--limit=2GB]
-  npx proxyfoxy change <user> <newpass>     # Change password for HTTP/SOCKS5
-  npx proxyfoxy delete <user> <port>        # Delete a specific proxy
-  npx proxyfoxy list                        # Show active proxies (copy/paste format)
-  npx proxyfoxy status                      # Detailed analytics (Countries, IPs, Traffic)
-  npx proxyfoxy stop [port|protocol]        # Stop specific or all proxy services
-  npx proxyfoxy start [port|protocol]       # Start specific or all proxy services
-  npx proxyfoxy uninstall                   # Completely remove everything
-
-Protocols Available:
-  - http        (Default, standard web proxy)
-  - socks5      (Low-level TCP via Dante, great for torrents)
-  - mtproto     (Telegram proxy via MTG)
-  - residential (Routes traffic through distributed Home PCs)
-
-Residential Network:
-  npx proxyfoxy provider <vps-ip>:<gateway-port>   # Run on Exit Node (Home PC)
-  npx proxyfoxy provider <vps-ip>:<gateway-port> --quiet  # Suppress reconnect messages
-
-Provider Management (run on VPS):
-  npx proxyfoxy providers                           # List connected / blacklisted providers
-  npx proxyfoxy providers block <ip> [reason]       # Blacklist a provider IP
-  npx proxyfoxy providers unblock <ip>              # Remove IP from blacklist
-  npx proxyfoxy providers whitelist <ip>            # Add IP to whitelist (only these IPs allowed)
-  npx proxyfoxy providers unwhitelist <ip>          # Remove IP from whitelist
-
-Docker:
-  docker run -d -p <port>:<port> ghcr.io/maxylev/proxyfoxy:latest <user> <pass> <port> [protocol]
-  `);
+if (["--version", "-v", "version"].includes(command)) {
+  console.log(PACKAGE_VERSION);
+  process.exit(0);
 }
 
-const requiresRoot = [
-  "add",
-  "delete",
-  "change",
-  "stop",
-  "start",
-  "uninstall",
-  "serve-master",
-];
-if (
-  requiresRoot.includes(command) &&
-  process.getuid &&
-  process.getuid() !== 0
-) {
-  console.error(
-    "\n❌ Error: Please run ProxyFoxy with sudo/root privileges.\n",
+function printHelp() {
+  console.log("\n\ud83e\udd8a ProxyFoxy \u2014 Distributed Proxy Manager v" + PACKAGE_VERSION);
+  console.log(rule() + "\n");
+  console.log("Usage:");
+  console.log("  npx proxyfoxy --help | -h");
+  console.log("  npx proxyfoxy --version | -v");
+  console.log("  npx proxyfoxy add <user> <pass> <port> [protocol] [--country=US] [--limit=2GB]");
+  console.log("  npx proxyfoxy change <user> [newpass] [--limit=XGB] [--country=XX]");
+  console.log("  npx proxyfoxy delete <user> <port>");
+  console.log("  npx proxyfoxy list                        Show active proxies");
+  console.log("  npx proxyfoxy status                      Analytics (traffic, providers, limits)");
+  console.log("  npx proxyfoxy stop [port|protocol]        Stop specific or all services");
+  console.log("  npx proxyfoxy start [port|protocol]       Start specific or all services");
+  console.log("  npx proxyfoxy uninstall                   Remove everything");
+  console.log();
+  console.log("Protocols:");
+  console.log("  http        Standard web proxy (Squid)");
+  console.log("  socks5      TCP proxy via Dante");
+  console.log("  mtproto     Telegram proxy via MTG");
+  console.log("  residential Distributed relay through Home PCs");
+  console.log();
+  console.log("Residential Network:");
+  console.log("  npx proxyfoxy provider <vps-ip>:<gateway-port>:<token> [--quiet]");
+  console.log("  npx proxyfoxy providers                           List / manage providers");
+  console.log("  npx proxyfoxy providers block <ip> [reason]");
+  console.log("  npx proxyfoxy providers unblock <ip>");
+  console.log("  npx proxyfoxy providers whitelist <ip>");
+  console.log("  npx proxyfoxy providers unwhitelist <ip>");
+  console.log();
+  console.log("Docker:");
+  console.log(
+    "  docker run -d -p <port>:<port> ghcr.io/maxylev/proxyfoxy:latest <user> <pass> <port> [protocol]",
   );
+  console.log();
+}
+
+if (["--help", "-h", "help"].includes(command)) {
+  printHelp();
+  process.exit(0);
+}
+
+const requiresRoot = ["add", "delete", "change", "stop", "start", "uninstall", "serve-master"];
+if (requiresRoot.includes(command) && process.getuid && process.getuid() !== 0) {
+  console.error("\n\u274c Error: Please run ProxyFoxy with sudo/root privileges.\n");
   process.exit(1);
 }
 
@@ -96,47 +103,45 @@ const DB_PATH = "/etc/proxyfoxy.json";
 const STATE_PATH = "/var/run/proxyfoxy_state.json";
 const BLACKLIST_PATH = "/etc/proxyfoxy_blacklist.json";
 const WHITELIST_PATH = "/etc/proxyfoxy_whitelist.json";
+const TRAFFIC_PATH = "/var/lib/proxyfoxy/traffic.json";
 
 let db = { proxies: [] };
 try {
   if (fs.existsSync(DB_PATH)) db = JSON.parse(fs.readFileSync(DB_PATH, "utf8"));
 } catch (e) {}
 
-const saveDb = () => {
-  const tmpPath = `${DB_PATH}.tmp`;
-  fs.writeFileSync(tmpPath, JSON.stringify(db, null, 2));
-  fs.renameSync(tmpPath, DB_PATH);
-};
+function writeJsonSecure(path, value) {
+  const tmpPath = `${path}.tmp`;
+  fs.writeFileSync(tmpPath, JSON.stringify(value, null, 2), { mode: 0o600 });
+  fs.chmodSync(tmpPath, 0o600);
+  fs.renameSync(tmpPath, path);
+}
+
+const saveDb = () => writeJsonSecure(DB_PATH, db);
 
 function loadBlacklist() {
   try {
-    if (fs.existsSync(BLACKLIST_PATH))
-      return JSON.parse(fs.readFileSync(BLACKLIST_PATH, "utf8"));
+    if (fs.existsSync(BLACKLIST_PATH)) return JSON.parse(fs.readFileSync(BLACKLIST_PATH, "utf8"));
   } catch (e) {}
   return {};
 }
 
 function saveBlacklist(list) {
   try {
-    const tmp = `${BLACKLIST_PATH}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(list, null, 2));
-    fs.renameSync(tmp, BLACKLIST_PATH);
+    writeJsonSecure(BLACKLIST_PATH, list);
   } catch (e) {}
 }
 
 function loadWhitelist() {
   try {
-    if (fs.existsSync(WHITELIST_PATH))
-      return JSON.parse(fs.readFileSync(WHITELIST_PATH, "utf8"));
+    if (fs.existsSync(WHITELIST_PATH)) return JSON.parse(fs.readFileSync(WHITELIST_PATH, "utf8"));
   } catch (e) {}
   return [];
 }
 
 function saveWhitelist(list) {
   try {
-    const tmp = `${WHITELIST_PATH}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(list, null, 2));
-    fs.renameSync(tmp, WHITELIST_PATH);
+    writeJsonSecure(WHITELIST_PATH, list);
   } catch (e) {}
 }
 
@@ -163,33 +168,98 @@ function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
 }
 
+function progressBar(used, total, width) {
+  if (!total) return "";
+  width = width || 20;
+  var pct = Math.min(used / total, 1);
+  var filled = Math.round(pct * width);
+  return "\u2588".repeat(filled) + "\u2591".repeat(width - filled);
+}
+
+function getProxyHealth(proxy) {
+  if (!proxy.limit) return "active";
+  var traffic = trackTraffic(proxy.port);
+  var usage = traffic.rx + traffic.tx;
+  if (usage >= proxy.limit) return "exhausted";
+  if (usage >= proxy.limit * 0.8) return "warning";
+  return "active";
+}
+
+function formatTimestamp(iso) {
+  try {
+    var d = new Date(iso);
+    var months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+    return (
+      months[d.getUTCMonth()] +
+      " " +
+      d.getUTCDate() +
+      " " +
+      String(d.getUTCHours()).padStart(2, "0") +
+      ":" +
+      String(d.getUTCMinutes()).padStart(2, "0") +
+      " UTC"
+    );
+  } catch (e) {
+    return iso;
+  }
+}
+
 function validateUser(user) {
   if (!/^[a-zA-Z0-9_-]+$/.test(user)) {
-    console.error(
-      "\n❌ Invalid username. Only letters, numbers, underscores, and hyphens are allowed.\n",
-    );
+    console.error("\n\u274c Invalid username. Only letters, numbers, underscores, and hyphens.\n");
     process.exit(1);
   }
 }
 
+function parsePortStrict(port) {
+  const raw = String(port ?? "").trim();
+  if (!/^\d+$/.test(raw)) return null;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 65535 ? parsed : null;
+}
+
 function validatePort(port) {
-  const p = parseInt(port, 10);
-  if (isNaN(p) || p < 1 || p > 65535) {
-    console.error("\n❌ Invalid port. Must be a number between 1 and 65535.\n");
+  const p = parsePortStrict(port);
+  if (p === null) {
+    console.error("\n\u274c Invalid port. Must be between 1 and 65535.\n");
     process.exit(1);
   }
+  return p;
 }
 
 function shellEscape(str) {
   return "'" + str.replace(/'/g, "'\\''") + "'";
 }
 
+function validateProtocol(protocol) {
+  if (!SUPPORTED_PROTOCOLS.has(protocol)) {
+    console.error("\n❌ Invalid protocol. Use http, socks5, mtproto, or residential.\n");
+    process.exit(1);
+  }
+}
+
+function validateLimitFlag(limit, rawLimit) {
+  if (rawLimit && limit === null && rawLimit !== "0" && rawLimit.toLowerCase() !== "none") {
+    console.error("\n❌ Invalid limit. Use values like 500MB, 2GB, or 0/none when changing.\n");
+    process.exit(1);
+  }
+}
+
 async function getPublicIp() {
-  const providers = [
-    "https://icanhazip.com",
-    "https://ifconfig.me",
-    "https://ipinfo.io/ip",
-  ];
+  const providers = ["https://icanhazip.com", "https://ifconfig.me", "https://ipinfo.io/ip"];
   for (const url of providers) {
     try {
       const ip = await new Promise((res, rej) => {
@@ -224,21 +294,17 @@ function getIpInfo(ip) {
   const token = ipTokens[Math.floor(Math.random() * ipTokens.length)];
   return new Promise((resolve) => {
     https
-      .get(
-        `https://api.ipinfo.io/lite/${ip}?token=${token}`,
-        { timeout: 3000 },
-        (res) => {
-          let data = "";
-          res.on("data", (c) => (data += c));
-          res.on("end", () => {
-            try {
-              resolve(JSON.parse(data));
-            } catch (e) {
-              resolve({});
-            }
-          });
-        },
-      )
+      .get(`https://api.ipinfo.io/lite/${ip}?token=${token}`, { timeout: 3000 }, (res) => {
+        let data = "";
+        res.on("data", (c) => (data += c));
+        res.on("end", () => {
+          try {
+            resolve(JSON.parse(data));
+          } catch (e) {
+            resolve({});
+          }
+        });
+      })
       .on("error", () => resolve({}));
   });
 }
@@ -247,8 +313,7 @@ function getIpInfo(ip) {
 // 🐧 OS ABSTRACTION & KERNEL FIREWALL
 // -----------------------------------------------------------------
 function detectOS() {
-  if (process.platform !== "linux" || !fs.existsSync("/etc/os-release"))
-    return null;
+  if (process.platform !== "linux" || !fs.existsSync("/etc/os-release")) return null;
   const osRelease = fs.readFileSync("/etc/os-release", "utf8").toLowerCase();
 
   const isAlpine = osRelease.includes("alpine");
@@ -266,39 +331,28 @@ function detectOS() {
     install: (pkgs) => {
       if (isAlpine) run(`apk update && apk add --no-cache iptables ${pkgs}`);
       else if (isDebian)
-        run(
-          `apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y iptables ${pkgs}`,
-        );
+        run(`apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y iptables ${pkgs}`);
       else
         run(
           `dnf install -y epel-release iptables 2>/dev/null || yum install -y epel-release iptables 2>/dev/null || true; dnf install -y ${pkgs} || yum install -y ${pkgs}`,
         );
     },
     service: (action, name) => {
-      if (
-        fs.existsSync("/etc/systemd/system") ||
-        runQuiet("command -v systemctl")
-      ) {
+      if (fs.existsSync("/etc/systemd/system") || runQuiet("command -v systemctl")) {
         runQuiet(`systemctl ${action} ${name} 2>/dev/null || true`);
       } else if (isAlpine || fs.existsSync("/sbin/openrc-run")) {
         runQuiet(`rc-service ${name} ${action} 2>/dev/null || true`);
       }
     },
     isServiceRunning: (name) => {
-      if (
-        fs.existsSync("/etc/systemd/system") ||
-        runQuiet("command -v systemctl")
-      ) {
+      if (fs.existsSync("/etc/systemd/system") || runQuiet("command -v systemctl")) {
         return runQuiet(`systemctl is-active --quiet ${name}`);
       } else {
         return runQuiet(`rc-service ${name} status | grep -q 'started'`);
       }
     },
     daemonize: (name, execCmd) => {
-      if (
-        fs.existsSync("/etc/systemd/system") ||
-        runQuiet("command -v systemctl")
-      ) {
+      if (fs.existsSync("/etc/systemd/system") || runQuiet("command -v systemctl")) {
         const svc = `[Unit]\nDescription=ProxyFoxy ${name}\nAfter=network.target\n[Service]\nExecStart=${execCmd}\nRestart=always\nLimitNOFILE=65535\n[Install]\nWantedBy=multi-user.target`;
         fs.writeFileSync(`/etc/systemd/system/${name}.service`, svc);
         runQuiet(
@@ -316,32 +370,45 @@ function detectOS() {
   };
 }
 
+function getExternalInterface() {
+  try {
+    const ifaces = os.networkInterfaces();
+    return (
+      Object.keys(ifaces).find(
+        (k) => k !== "lo" && !k.startsWith("docker") && !k.startsWith("br-"),
+      ) || "eth0"
+    );
+  } catch (e) {
+    return "eth0";
+  }
+}
+
+function writeDanteConfig(osInfo, socksProxies) {
+  const confPath = osInfo.isDebian ? "/etc/danted.conf" : "/etc/sockd.conf";
+  const extIf = getExternalInterface();
+  const internals = socksProxies
+    .map((p) => `internal: 0.0.0.0 port = ${parsePortStrict(p.port)}`)
+    .join("\n");
+  fs.writeFileSync(
+    confPath,
+    `logoutput: syslog\n${internals}\nexternal: ${extIf}\nsocksmethod: username\nclientmethod: none\nuser.privileged: root\nuser.unprivileged: nobody\nclient pass { from: 0.0.0.0/0 to: 0.0.0.0/0 }\nsocks pass { from: 0.0.0.0/0 to: 0.0.0.0/0 }\n`,
+  );
+}
+
 function configureFirewall(port, osInfo, remove = false) {
   try {
     if (!remove) {
       if (osInfo.isDebian) runQuiet(`ufw allow ${port}/tcp`);
       if (osInfo.isRhel)
-        runQuiet(
-          `firewall-cmd --permanent --add-port=${port}/tcp && firewall-cmd --reload`,
-        );
-      if (
-        !runQuiet(
-          `iptables -C INPUT -p tcp --dport ${port} -j ACCEPT 2>/dev/null`,
-        )
-      )
+        runQuiet(`firewall-cmd --permanent --add-port=${port}/tcp && firewall-cmd --reload`);
+      if (!runQuiet(`iptables -C INPUT -p tcp --dport ${port} -j ACCEPT 2>/dev/null`))
         runQuiet(`iptables -I INPUT 1 -p tcp --dport ${port} -j ACCEPT`);
-      if (
-        !runQuiet(
-          `iptables -C OUTPUT -p tcp --sport ${port} -j ACCEPT 2>/dev/null`,
-        )
-      )
+      if (!runQuiet(`iptables -C OUTPUT -p tcp --sport ${port} -j ACCEPT 2>/dev/null`))
         runQuiet(`iptables -I OUTPUT 1 -p tcp --sport ${port} -j ACCEPT`);
     } else {
       if (osInfo.isDebian) runQuiet(`ufw delete allow ${port}/tcp`);
       if (osInfo.isRhel)
-        runQuiet(
-          `firewall-cmd --permanent --remove-port=${port}/tcp && firewall-cmd --reload`,
-        );
+        runQuiet(`firewall-cmd --permanent --remove-port=${port}/tcp && firewall-cmd --reload`);
       runQuiet(`iptables -D INPUT -p tcp --dport ${port} -j ACCEPT`);
       runQuiet(`iptables -D OUTPUT -p tcp --sport ${port} -j ACCEPT`);
     }
@@ -365,23 +432,25 @@ function getPortTraffic(port) {
 }
 
 function trackTraffic(port) {
-  let rx = 0, tx = 0;
+  let rx = 0,
+    tx = 0;
   try {
-    const i = execSync(
-      `iptables -nxvL INPUT | grep -w "dpt:${port}" | head -n 1 || true`,
-      { stdio: "pipe" },
-    ).toString().trim();
+    const i = execSync(`iptables -nxvL INPUT | grep -w "dpt:${port}" | head -n 1 || true`, {
+      stdio: "pipe",
+    })
+      .toString()
+      .trim();
     if (i) rx = parseInt(i.split(/\s+/)[1]) || 0;
-    const o = execSync(
-      `iptables -nxvL OUTPUT | grep -w "spt:${port}" | head -n 1 || true`,
-      { stdio: "pipe" },
-    ).toString().trim();
+    const o = execSync(`iptables -nxvL OUTPUT | grep -w "spt:${port}" | head -n 1 || true`, {
+      stdio: "pipe",
+    })
+      .toString()
+      .trim();
     if (o) tx = parseInt(o.split(/\s+/)[1]) || 0;
   } catch (e) {}
   const appData = getPortTraffic(port);
   let fileData = { rx: 0, tx: 0 };
   try {
-    const TRAFFIC_PATH = "/var/lib/proxyfoxy/traffic.json";
     if (fs.existsSync(TRAFFIC_PATH)) {
       const all = JSON.parse(fs.readFileSync(TRAFFIC_PATH, "utf8"));
       if (all[port]) fileData = all[port];
@@ -401,8 +470,6 @@ function serveResidentialMaster(gatewayPort) {
   let providers = [];
   const consumerServers = new Map();
   const providerErrors = new Map();
-  const TRAFFIC_PATH = "/var/lib/proxyfoxy/traffic.json";
-
   function loadTrafficFromFile() {
     try {
       if (fs.existsSync(TRAFFIC_PATH)) {
@@ -419,15 +486,42 @@ function serveResidentialMaster(gatewayPort) {
       const dir = "/var/lib/proxyfoxy";
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       const data = {};
-      portTraffic.forEach((v, k) => { data[k] = v; });
-      const tmp = `${TRAFFIC_PATH}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(data));
-      fs.renameSync(tmp, TRAFFIC_PATH);
+      portTraffic.forEach((v, k) => {
+        data[k] = v;
+      });
+      writeJsonSecure(TRAFFIC_PATH, data);
     } catch (e) {}
   }
 
   const AUTO_BLACKLIST_THRESHOLD = 5;
   const AUTO_BLACKLIST_WINDOW = 600000;
+
+  function ensureResidentialTokens(currentDb) {
+    let changed = false;
+    currentDb.proxies.forEach((p) => {
+      if (p.type === "residential" && !p.providerToken) {
+        p.providerToken = crypto.randomBytes(18).toString("base64url");
+        changed = true;
+      }
+    });
+    if (changed) {
+      db = currentDb;
+      saveDb();
+    }
+    return currentDb.proxies
+      .filter((p) => p.type === "residential" && p.providerToken)
+      .map((p) => p.providerToken);
+  }
+
+  function providerTokenAllowed(token) {
+    try {
+      const currentDb = JSON.parse(fs.readFileSync(DB_PATH, "utf8"));
+      ensureResidentialTokens(currentDb);
+      return ensureResidentialTokens(currentDb).includes(token);
+    } catch (e) {
+      return false;
+    }
+  }
 
   function isIpAllowed(ip) {
     const blacklist = loadBlacklist();
@@ -451,9 +545,7 @@ function serveResidentialMaster(gatewayPort) {
         blacklist[ip] = { reason: "auto", at: new Date().toISOString() };
         saveBlacklist(blacklist);
         providers.filter((p) => p.ipRaw === ip).forEach((p) => p.destroy());
-        console.log(
-          `⚠️  Auto-blacklisted provider ${ip} (${record.count} abrupt disconnects)`,
-        );
+        console.log(`⚠️  Auto-blacklisted provider ${ip} (${record.count} abrupt disconnects)`);
       }
     }
   }
@@ -468,17 +560,14 @@ function serveResidentialMaster(gatewayPort) {
       connectedAt: p.connectedAt,
     }));
     try {
-      fs.writeFileSync(`${STATE_PATH}.tmp`, JSON.stringify(state));
-      fs.renameSync(`${STATE_PATH}.tmp`, STATE_PATH);
+      writeJsonSecure(STATE_PATH, state);
     } catch (e) {}
   }
 
   function syncServers() {
     try {
       const currentDb = JSON.parse(fs.readFileSync(DB_PATH, "utf8"));
-      const resProxies = currentDb.proxies.filter(
-        (p) => p.type === "residential",
-      );
+      const resProxies = currentDb.proxies.filter((p) => p.type === "residential");
 
       consumerServers.forEach((server, port) => {
         const conf = resProxies.find((p) => p.port == port);
@@ -493,9 +582,7 @@ function serveResidentialMaster(gatewayPort) {
         if (!consumerServers.has(proxy.port)) {
           const traffic = trackTraffic(proxy.port);
           if (proxy.limit && traffic.rx + traffic.tx >= proxy.limit) return;
-          const server = net.createServer((socket) =>
-            handleConsumer(socket, proxy),
-          );
+          const server = net.createServer((socket) => handleConsumer(socket, proxy));
           server.on("error", () => {});
           server.listen(proxy.port, "0.0.0.0");
           consumerServers.set(proxy.port, server);
@@ -533,8 +620,9 @@ function serveResidentialMaster(gatewayPort) {
 
     socket.once("data", async (data) => {
       socket.rxBytes += data.length;
-      const authHeader = data.toString("utf8", 0, 100).split("\n")[0];
-      if (!authHeader.startsWith("PROVIDER")) return socket.destroy();
+      const authHeader = data.toString("utf8", 0, 256).split("\n")[0];
+      const token = authHeader.match(/^PROVIDER\s+(.+)$/)?.[1]?.trim();
+      if (!token || !providerTokenAllowed(token)) return socket.destroy();
 
       socket.ipRaw = socket.remoteAddress.replace(/^.*:/, "");
       if (!isIpAllowed(socket.ipRaw)) return socket.destroy();
@@ -566,8 +654,7 @@ function serveResidentialMaster(gatewayPort) {
             const msg = JSON.parse(line);
             const target = socket.targets.get(msg.id);
             if (!target) continue;
-            if (msg.type === "data")
-              target.write(Buffer.from(msg.data, "base64"));
+            if (msg.type === "data") target.write(Buffer.from(msg.data, "base64"));
             else if (msg.type === "close") {
               target.destroy();
               socket.targets.delete(msg.id);
@@ -577,6 +664,8 @@ function serveResidentialMaster(gatewayPort) {
       });
 
       const cleanup = () => {
+        if (socket.cleanedUp) return;
+        socket.cleanedUp = true;
         providers = providers.filter((p) => p !== socket);
         socket.targets.forEach((t) => t.destroy());
         socket.targets.clear();
@@ -592,14 +681,21 @@ function serveResidentialMaster(gatewayPort) {
   gateway.on("error", () => {});
   gateway.listen(gatewayPort, "0.0.0.0");
 
-  function relayToProvider(socket, provider, proxyConf, host, port) {
+  function relayToProvider(socket, provider, proxyConf, host, port, initialData) {
     const id = crypto.randomBytes(4).toString("hex");
     provider.targets.set(id, socket);
 
     try {
-      provider.write(
-        JSON.stringify({ type: "connect", id, host, port }) + "\n",
-      );
+      provider.write(JSON.stringify({ type: "connect", id, host, port }) + "\n");
+      if (initialData) {
+        provider.write(
+          JSON.stringify({
+            type: "data",
+            id,
+            data: Buffer.from(initialData).toString("base64"),
+          }) + "\n",
+        );
+      }
     } catch (e) {
       return socket.destroy();
     }
@@ -639,7 +735,15 @@ function serveResidentialMaster(gatewayPort) {
   }
 
   function handleConsumer(socket, proxyConf) {
-    const consumerPort = proxyConf.port;
+    try {
+      var currentDb = JSON.parse(fs.readFileSync(DB_PATH, "utf8"));
+      var fresh = currentDb.proxies.find(function (p) {
+        return p.port == proxyConf.port;
+      });
+      if (fresh) proxyConf = fresh;
+    } catch (e) {}
+
+    var consumerPort = proxyConf.port;
 
     socket.on("data", (chunk) => {
       trackPortRx(consumerPort, chunk.length);
@@ -669,8 +773,7 @@ function serveResidentialMaster(gatewayPort) {
 
     const nMethods = greeting[1];
     const methods = new Set();
-    for (let i = 0; i < nMethods && 2 + i < greeting.length; i++)
-      methods.add(greeting[2 + i]);
+    for (let i = 0; i < nMethods && 2 + i < greeting.length; i++) methods.add(greeting[2 + i]);
 
     if (!methods.has(0x02)) {
       socket.write(Buffer.from([0x05, 0xff]));
@@ -701,8 +804,7 @@ function serveResidentialMaster(gatewayPort) {
       if (!provider) return socket.destroy();
 
       socket.once("data", (connData) => {
-        if (connData[0] !== 0x05 || connData[1] !== 0x01)
-          return socket.destroy();
+        if (connData[0] !== 0x05 || connData[1] !== 0x01) return socket.destroy();
 
         let host = "",
           offset = 4;
@@ -716,9 +818,7 @@ function serveResidentialMaster(gatewayPort) {
         } else return socket.destroy();
 
         const targetPort = connData.readUInt16BE(offset);
-        socket.write(
-          Buffer.from([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]),
-        );
+        socket.write(Buffer.from([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]));
         relayToProvider(socket, provider, proxyConf, host, targetPort);
       });
     });
@@ -726,15 +826,38 @@ function serveResidentialMaster(gatewayPort) {
 
   function handleHTTPConnect(socket, proxyConf, firstChunk) {
     const header = firstChunk.toString("utf8");
-    const match = header.match(
-      /^CONNECT\s+([^\s:]+):(\d+)\s+HTTP\/1\.[01]\r?\n/i,
+    const headerEnd =
+      header.indexOf("\r\n\r\n") >= 0
+        ? header.indexOf("\r\n\r\n") + 4
+        : header.indexOf("\n\n") >= 0
+          ? header.indexOf("\n\n") + 2
+          : firstChunk.length;
+    const headText = firstChunk.toString("utf8", 0, headerEnd);
+    const connectMatch = headText.match(/^CONNECT\s+([^\s:]+):(\d+)\s+HTTP\/1\.[01]\r?\n/i);
+    const plainMatch = headText.match(
+      /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(https?:\/\/[^\s]+)\s+(HTTP\/1\.[01])\r?\n/i,
     );
-    if (!match) {
+    if (!connectMatch && !plainMatch) {
       socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
       return socket.destroy();
     }
 
-    const [, host, port] = match;
+    let host,
+      port,
+      initialData = null;
+    if (connectMatch) {
+      host = connectMatch[1];
+      port = parseInt(connectMatch[2]);
+    } else {
+      const target = new URL(plainMatch[2]);
+      host = target.hostname;
+      port = Number(target.port) || (target.protocol === "https:" ? 443 : 80);
+      const path = `${target.pathname || "/"}${target.search || ""}`;
+      const rewritten = headText
+        .replace(plainMatch[0], `${plainMatch[1]} ${path} ${plainMatch[3]}\r\n`)
+        .replace(/^Proxy-Authorization:.*\r?\n/im, "");
+      initialData = Buffer.concat([Buffer.from(rewritten), firstChunk.slice(headerEnd)]);
+    }
 
     let authHeader = "";
     const lines = header.split(/\r?\n/);
@@ -747,7 +870,7 @@ function serveResidentialMaster(gatewayPort) {
 
     if (!authHeader.startsWith("Basic ")) {
       socket.write(
-        "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"proxyfoxy\"\r\n\r\n",
+        'HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="proxyfoxy"\r\n\r\n',
       );
       return socket.destroy();
     }
@@ -756,7 +879,7 @@ function serveResidentialMaster(gatewayPort) {
     const colonIdx = decoded.indexOf(":");
     if (colonIdx === -1) {
       socket.write(
-        "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"proxyfoxy\"\r\n\r\n",
+        'HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="proxyfoxy"\r\n\r\n',
       );
       return socket.destroy();
     }
@@ -766,7 +889,7 @@ function serveResidentialMaster(gatewayPort) {
 
     if (uname !== proxyConf.user || passwd !== proxyConf.pass) {
       socket.write(
-        "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"proxyfoxy\"\r\n\r\n",
+        'HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="proxyfoxy"\r\n\r\n',
       );
       return socket.destroy();
     }
@@ -777,15 +900,15 @@ function serveResidentialMaster(gatewayPort) {
       return socket.destroy();
     }
 
-    socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
-    relayToProvider(socket, provider, proxyConf, host, parseInt(port));
+    if (connectMatch) socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+    relayToProvider(socket, provider, proxyConf, host, parseInt(port), initialData);
   }
 }
 
 // -----------------------------------------------------------------
 // 🔌 PROVIDER CLIENT (Home PC Exit Node)
 // -----------------------------------------------------------------
-function runProviderClient(host, port, quiet) {
+function runProviderClient(host, port, token, quiet) {
   let targets = new Map();
   let activeSocket = null;
 
@@ -809,7 +932,7 @@ function runProviderClient(host, port, quiet) {
     log(`\n⏳ Connecting to Master Gateway at ${host}:${port}...`);
     const ws = net.createConnection({ host, port }, () => {
       console.log("✅ Connected! Proxying traffic globally...");
-      ws.write("PROVIDER\n");
+      ws.write("PROVIDER " + token + "\n");
     });
     activeSocket = ws;
 
@@ -883,17 +1006,24 @@ function runProviderClient(host, port, quiet) {
       case "provider": {
         const pQuiet = args.includes("--quiet");
         const pArgs = args.filter((a) => a !== "--quiet");
-        let pIp, pPort;
+        let pIp, pPort, pToken;
         if (pArgs.length === 1 && pArgs[0].includes(":")) {
+          [pIp, pPort, pToken] = pArgs[0].split(":");
+        } else if (pArgs.length === 2 && pArgs[0].includes(":")) {
           [pIp, pPort] = pArgs[0].split(":");
-        } else if (pArgs.length === 2) {
-          [pIp, pPort] = pArgs;
+          pToken = pArgs[1];
+        } else if (pArgs.length === 3) {
+          [pIp, pPort, pToken] = pArgs;
         } else {
+          return console.log("\n\u274c Usage: proxyfoxy provider <ip>:<port>:<token> [--quiet]\n");
+        }
+        const providerPort = validatePort(pPort);
+        if (!pToken) {
           return console.log(
-            "\n❌ Usage: proxyfoxy provider <ip>:<port> [--quiet]\n",
+            "\n\u274c Provider token is required. Copy the full Provider command from 'proxyfoxy add ... residential'.\n",
           );
         }
-        runProviderClient(pIp, pPort, pQuiet);
+        runProviderClient(pIp, providerPort, pToken, pQuiet);
         break;
       }
 
@@ -901,44 +1031,34 @@ function runProviderClient(host, port, quiet) {
         const sub = args[0];
         if (sub === "block") {
           const ip = args[1];
-          if (!ip)
-            return console.log("\n❌ Usage: proxyfoxy providers block <ip>\n");
+          if (!ip) return console.log("\n\u274c Usage: proxyfoxy providers block <ip>\n");
           const list = loadBlacklist();
           list[ip] = {
             reason: args.slice(2).join(" ") || "manual",
             at: new Date().toISOString(),
           };
           saveBlacklist(list);
-          console.log(`\n✅ Blocked provider ${ip}.\n`);
+          console.log("\n\u2705 Blocked provider " + ip + ".\n");
         } else if (sub === "unblock") {
           const ip = args[1];
-          if (!ip)
-            return console.log(
-              "\n❌ Usage: proxyfoxy providers unblock <ip>\n",
-            );
+          if (!ip) return console.log("\n\u274c Usage: proxyfoxy providers unblock <ip>\n");
           const list = loadBlacklist();
           delete list[ip];
           saveBlacklist(list);
-          console.log(`\n✅ Unblocked provider ${ip}.\n`);
+          console.log("\n\u2705 Unblocked provider " + ip + ".\n");
         } else if (sub === "whitelist") {
           const ip = args[1];
-          if (!ip)
-            return console.log(
-              "\n❌ Usage: proxyfoxy providers whitelist <ip>\n",
-            );
+          if (!ip) return console.log("\n\u274c Usage: proxyfoxy providers whitelist <ip>\n");
           const list = loadWhitelist();
           if (!list.includes(ip)) list.push(ip);
           saveWhitelist(list);
-          console.log(`\n✅ Added ${ip} to whitelist.\n`);
+          console.log("\n\u2705 Added " + ip + " to whitelist.\n");
         } else if (sub === "unwhitelist") {
           const ip = args[1];
-          if (!ip)
-            return console.log(
-              "\n❌ Usage: proxyfoxy providers unwhitelist <ip>\n",
-            );
+          if (!ip) return console.log("\n\u274c Usage: proxyfoxy providers unwhitelist <ip>\n");
           const list = loadWhitelist().filter((i) => i !== ip);
           saveWhitelist(list);
-          console.log(`\n✅ Removed ${ip} from whitelist.\n`);
+          console.log("\n\u2705 Removed " + ip + " from whitelist.\n");
         } else {
           let resState = [];
           try {
@@ -947,36 +1067,49 @@ function runProviderClient(host, port, quiet) {
           const blacklist = loadBlacklist();
           const whitelist = loadWhitelist();
 
-          console.log(`\n🏠 PROVIDER MANAGEMENT`);
-          console.log(`════════════════════════════════════════════`);
+          console.log("\n\ud83c\udfe0 Provider Management");
+          console.log(rule(55));
 
           if (resState.length > 0) {
-            console.log(`\n🟢 Connected (${resState.length}):`);
-            resState.forEach((p) =>
+            console.log("\n\ud83d\udfe2 Connected (" + resState.length + "):");
+            resState.forEach(function (p) {
               console.log(
-                `   ├─ ${p.ip} [${p.country}] since ${p.connectedAt}`,
-              ),
-            );
+                "   \u2514\u2500 " +
+                  p.ip +
+                  " [" +
+                  p.country +
+                  "] \u2014 since " +
+                  formatTimestamp(p.connectedAt),
+              );
+            });
           } else {
-            console.log(`\n🔴 No providers connected.`);
+            console.log("\n\ud83d\udd34 No providers connected.");
           }
 
-          const blEntries = Object.entries(blacklist);
+          var blEntries = Object.entries(blacklist);
           if (blEntries.length > 0) {
-            console.log(`\n🚫 Blacklisted (${blEntries.length}):`);
-            blEntries.forEach(([ip, info]) =>
-              console.log(`   ├─ ${ip} — ${info.reason} (${info.at})`),
-            );
+            console.log("\n\ud83d\udeab Blacklisted (" + blEntries.length + "):");
+            blEntries.forEach(function (entry) {
+              console.log(
+                "   \u2514\u2500 " +
+                  entry[0] +
+                  " \u2014 " +
+                  entry[1].reason +
+                  " (" +
+                  formatTimestamp(entry[1].at) +
+                  ")",
+              );
+            });
           }
 
           if (whitelist.length > 0) {
-            console.log(`\n✅ Whitelist (${whitelist.length}):`);
-            whitelist.forEach((ip) => console.log(`   ├─ ${ip}`));
+            console.log("\n\u2705 Whitelist (" + whitelist.length + "):");
+            whitelist.forEach(function (ip) {
+              console.log("   \u2514\u2500 " + ip);
+            });
           }
 
-          console.log(
-            `\n══════════════════════════════════════════════════════════\n`,
-          );
+          console.log("\n" + rule(55) + "\n");
         }
         break;
       }
@@ -984,20 +1117,30 @@ function runProviderClient(host, port, quiet) {
       case "add": {
         if (!osInfo)
           return console.error(
-            "\n❌ Unsupported OS. Requires Debian/Ubuntu, RHEL/CentOS, or Alpine.\n",
+            "\n\u274c Unsupported OS. Requires Debian/Ubuntu, RHEL/CentOS, or Alpine.\n",
           );
         let [user, pass, port, requestedProto] = args;
         if (!user || !pass || !port)
-          return console.log(
-            "\n❌ Usage: proxyfoxy add <user> <pass> <port> [protocol]\n",
-          );
+          return console.log("\n\u274c Usage: proxyfoxy add <user> <pass> <port> [protocol]\n");
 
         validateUser(user);
-        validatePort(port);
+        port = validatePort(port);
 
         const protocol = (requestedProto || "http").toLowerCase();
+        validateProtocol(protocol);
+        flags.gateway = validatePort(flags.gateway);
+        validateLimitFlag(
+          flags.limit,
+          rawArgs.find(function (a) {
+            return a.startsWith("--limit=");
+          }),
+        );
         console.log(
-          `\n🚀 Deploying ${protocol.toUpperCase()} Proxy -> Port: ${port}...\n`,
+          "\n\ud83d\ude80 Deploying " +
+            protocol.toUpperCase() +
+            " Proxy \u2192 Port " +
+            port +
+            "...\n",
         );
 
         if (protocol === "http") {
@@ -1009,9 +1152,7 @@ function runProviderClient(host, port, quiet) {
                 : "squid httpd-tools firewalld",
           );
           run(`mkdir -p /etc/squid && touch /etc/squid/passwords`);
-          run(
-            `htpasswd -b /etc/squid/passwords ${shellEscape(user)} ${shellEscape(pass)}`,
-          );
+          run(`htpasswd -b /etc/squid/passwords ${shellEscape(user)} ${shellEscape(pass)}`);
 
           const setupAuth = `AUTH_PATH=$(find /usr/lib/squid /usr/lib64/squid /usr/libexec/squid -name basic_ncsa_auth 2>/dev/null | head -n 1)\ncat <<EOF > /etc/squid/squid.conf\nauth_param basic program $AUTH_PATH /etc/squid/passwords\nacl authenticated proxy_auth REQUIRED\nhttp_access allow authenticated\nhttp_access deny all\nEOF`;
           run(
@@ -1022,58 +1163,35 @@ function runProviderClient(host, port, quiet) {
           );
 
           if (osInfo.isServiceRunning("squid")) {
-            if (osInfo.isDebian || osInfo.isRhel)
-              runQuiet("systemctl reload squid");
+            if (osInfo.isDebian || osInfo.isRhel) runQuiet("systemctl reload squid");
             else runQuiet("squid -k reconfigure");
           } else {
             osInfo.service("restart", "squid");
           }
         } else if (protocol === "socks5") {
-          osInfo.install(
-            osInfo.isDebian ? "dante-server ufw" : "dante-server firewalld",
-          );
+          osInfo.install(osInfo.isDebian ? "dante-server ufw" : "dante-server firewalld");
 
-          if (osInfo.isAlpine)
-            run(`adduser -H -D ${shellEscape(user)} 2>/dev/null || true`);
-          else
-            run(
-              `useradd -M -s /usr/sbin/nologin ${shellEscape(user)} 2>/dev/null || true`,
-            );
+          if (osInfo.isAlpine) run(`adduser -H -D ${shellEscape(user)} 2>/dev/null || true`);
+          else run(`useradd -M -s /usr/sbin/nologin ${shellEscape(user)} 2>/dev/null || true`);
           run(`echo ${shellEscape(user)}:${shellEscape(pass)} | chpasswd`);
 
-          let extIf = "eth0";
-          try {
-            const ifaces = os.networkInterfaces();
-            extIf =
-              Object.keys(ifaces).find(
-                (k) =>
-                  k !== "lo" && !k.startsWith("docker") && !k.startsWith("br-"),
-              ) || "eth0";
-          } catch (e) {}
-
-          const confPath = osInfo.isDebian
-            ? "/etc/danted.conf"
-            : "/etc/sockd.conf";
           const svcName = osInfo.isDebian ? "danted" : "sockd";
-
-          fs.writeFileSync(
-            confPath,
-            `logoutput: syslog\ninternal: 0.0.0.0 port = ${port}\nexternal: ${extIf}\nsocksmethod: username\nclientmethod: none\nuser.privileged: root\nuser.unprivileged: nobody\nclient pass { from: 0.0.0.0/0 to: 0.0.0.0/0 }\nsocks pass { from: 0.0.0.0/0 to: 0.0.0.0/0 }\n`,
-          );
+          writeDanteConfig(osInfo, [
+            ...db.proxies.filter((p) => p.type === "socks5" && p.port != port),
+            { port },
+          ]);
           osInfo.service("restart", svcName);
         } else if (protocol === "mtproto") {
           let mtgSecret = pass;
-          if (mtgSecret.length < 32) {
+          if (!fs.existsSync("/usr/local/bin/mtg")) {
             const arch = os.arch() === "arm64" ? "arm64" : "amd64";
             run(
               `wget -qO- https://github.com/9seconds/mtg/releases/download/v2.2.8/mtg-2.2.8-linux-${arch}.tar.gz | tar -xz -C /tmp`,
             );
-            run(
-              `mv /tmp/mtg-*/mtg /usr/local/bin/mtg && chmod +x /usr/local/bin/mtg`,
-            );
-            mtgSecret = execSync("/usr/local/bin/mtg generate-secret tls")
-              .toString()
-              .trim();
+            run(`mv /tmp/mtg-*/mtg /usr/local/bin/mtg && chmod +x /usr/local/bin/mtg`);
+          }
+          if (mtgSecret.length < 32) {
+            mtgSecret = execSync("/usr/local/bin/mtg generate-secret tls").toString().trim();
             pass = mtgSecret;
           }
           osInfo.daemonize(
@@ -1092,6 +1210,8 @@ function runProviderClient(host, port, quiet) {
 
         configureFirewall(port, osInfo);
         db.proxies = db.proxies.filter((p) => p.port != port);
+        const providerToken =
+          protocol === "residential" ? crypto.randomBytes(18).toString("base64url") : undefined;
         db.proxies.push({
           type: protocol,
           user,
@@ -1100,193 +1220,335 @@ function runProviderClient(host, port, quiet) {
           country: flags.country,
           limit: flags.limit,
           gatewayPort: protocol === "residential" ? flags.gateway : undefined,
+          providerToken,
         });
         saveDb();
 
-        const ip = await getPublicIp();
-        console.log(`\n✅ SUCCESS! Proxy is live.\n`);
-        if (protocol === "mtproto")
+        var ip = await getPublicIp();
+        console.log("\n\u2705 Proxy is live.\n");
+        if (protocol === "mtproto") {
           console.log(
-            `   🌐 TG Link: \x1b[32mtg://proxy?server=${ip}&port=${port}&secret=${pass}\x1b[0m\n`,
+            "   \ud83c\udf10 TG Link: \x1b[32mtg://proxy?server=" +
+              ip +
+              "&port=" +
+              port +
+              "&secret=" +
+              pass +
+              "\x1b[0m\n",
           );
-        else if (protocol === "residential") {
+        } else if (protocol === "residential") {
           console.log(
-            `   🌐 Proxy: \x1b[32m${user}:${pass}@${ip}:${port}\x1b[0m`,
+            "   \ud83c\udf10 Proxy:    \x1b[32m" +
+              user +
+              ":" +
+              pass +
+              "@" +
+              ip +
+              ":" +
+              port +
+              "\x1b[0m",
           );
           console.log(
-            `   🏠 Home PC string: \x1b[36mnpx proxyfoxy provider ${ip}:${flags.gateway}\x1b[0m\n`,
+            "   \ud83c\udfe0 Provider: \x1b[36mnpx proxyfoxy provider " +
+              ip +
+              ":" +
+              flags.gateway +
+              ":" +
+              providerToken +
+              "\x1b[0m",
           );
+          if (flags.country) console.log("   \ud83c\udf0d Country:  " + flags.country);
+          if (flags.limit) console.log("   \ud83d\udcca Limit:    " + formatBytes(flags.limit));
+          console.log();
         } else {
           console.log(
-            `   🌐 Ready to use: \x1b[32m${user}:${pass}@${ip}:${port}\x1b[0m\n`,
+            "   \ud83c\udf10 Ready to use: \x1b[32m" +
+              user +
+              ":" +
+              pass +
+              "@" +
+              ip +
+              ":" +
+              port +
+              "\x1b[0m\n",
           );
         }
         break;
       }
 
       case "change": {
-        const [user, newpass] = args;
-        if (!user || !newpass)
-          return console.log("\n❌ Usage: proxyfoxy change <user> <newpass>\n");
+        var hasLimitFlag = rawArgs.some(function (a) {
+          return a.startsWith("--limit=");
+        });
+        var hasCountryFlag = rawArgs.some(function (a) {
+          return a.startsWith("--country=");
+        });
+        var chUser = args[0];
+        var chPass = args[1];
 
-        validateUser(user);
+        if (!chUser)
+          return console.log(
+            "\n\u274c Usage: proxyfoxy change <user> [newpass] [--limit=XGB] [--country=XX]\n",
+          );
+        if (!chPass && !hasLimitFlag && !hasCountryFlag)
+          return console.log("\n\u274c Provide a new password or a flag (--limit=, --country=).\n");
 
-        let updated = false;
-        const updatedTypes = new Set();
-        db.proxies.forEach((p) => {
-          if (
-            p.user === user &&
-            (p.type === "http" ||
-              p.type === "socks5" ||
-              p.type === "residential")
-          ) {
-            p.pass = newpass;
-            updated = true;
-            updatedTypes.add(p.type);
+        validateUser(chUser);
+
+        var chUpdated = false;
+        var chUpdatedTypes = new Set();
+        var chChanges = [];
+
+        db.proxies.forEach(function (p) {
+          if (p.user !== chUser) return;
+
+          if (chPass && (p.type === "http" || p.type === "socks5" || p.type === "residential")) {
+            p.pass = chPass;
+            chUpdated = true;
+            chUpdatedTypes.add(p.type);
             if (p.type === "http")
               runQuiet(
-                `htpasswd -b /etc/squid/passwords ${shellEscape(user)} ${shellEscape(newpass)}`,
+                "htpasswd -b /etc/squid/passwords " +
+                  shellEscape(chUser) +
+                  " " +
+                  shellEscape(chPass),
               );
             if (p.type === "socks5")
-              runQuiet(
-                `echo ${shellEscape(user)}:${shellEscape(newpass)} | chpasswd`,
-              );
+              runQuiet("echo " + shellEscape(chUser) + ":" + shellEscape(chPass) + " | chpasswd");
+            chChanges.push("password");
+          }
+
+          if (hasLimitFlag && p.type === "residential") {
+            var rawLimit = rawArgs
+              .find(function (a) {
+                return a.startsWith("--limit=");
+              })
+              .split("=")[1];
+            p.limit =
+              rawLimit === "0" || rawLimit.toLowerCase() === "none" ? null : parseBytes(rawLimit);
+            validateLimitFlag(p.limit, rawLimit);
+            chUpdated = true;
+            chUpdatedTypes.add("residential");
+            chChanges.push(p.limit ? "limit \u2192 " + formatBytes(p.limit) : "limit removed");
+          }
+
+          if (hasCountryFlag && p.type === "residential") {
+            var rawCountry = rawArgs
+              .find(function (a) {
+                return a.startsWith("--country=");
+              })
+              .split("=")[1];
+            p.country = rawCountry === "" ? null : rawCountry.toUpperCase();
+            chUpdated = true;
+            chUpdatedTypes.add("residential");
+            chChanges.push(p.country ? "country \u2192 " + p.country : "country \u2192 any");
           }
         });
 
-        if (updated) {
+        if (chUpdated) {
           saveDb();
-          if (updatedTypes.has("http")) {
+          if (chUpdatedTypes.has("http") && osInfo) {
             if (osInfo.isServiceRunning("squid"))
-              runQuiet(
-                osInfo.isAlpine
-                  ? "squid -k reconfigure"
-                  : "systemctl reload squid",
-              );
+              runQuiet(osInfo.isAlpine ? "squid -k reconfigure" : "systemctl reload squid");
             else osInfo.service("restart", "squid");
           }
-          if (updatedTypes.has("socks5"))
+          if (chUpdatedTypes.has("socks5") && osInfo)
             osInfo.service("restart", osInfo.isDebian ? "danted" : "sockd");
-          console.log(
-            `\n✅ Password successfully updated for user '${user}'.\n`,
-          );
+          console.log("\n\u2705 Updated '" + chUser + "': " + chChanges.join(", ") + ".\n");
         } else {
-          console.log(
-            `\n❌ User '${user}' not found or protocol doesn't support changing passwords.\n`,
-          );
+          console.log("\n\u274c User '" + chUser + "' not found.\n");
         }
         break;
       }
 
       case "list": {
-        console.log("\n🦊 ProxyFoxy - Proxies");
-        console.log(
-          "══════════════════════════════════════════════════════════",
-        );
+        console.log("\n\ud83e\udd8a ProxyFoxy \u2014 Active Proxies");
+        console.log(rule());
         const ip = await getPublicIp();
 
         if (db.proxies.length > 0) {
           db.proxies.forEach((p) => {
+            const health = getProxyHealth(p);
+            const icon =
+              health === "exhausted"
+                ? "\ud83d\udd34"
+                : health === "warning"
+                  ? "\ud83d\udfe1"
+                  : "\ud83d\udfe2";
+            const typeLabel = p.type.toUpperCase().padEnd(14);
+
             if (p.type === "residential") {
-              const c = p.country ? `[${p.country}]` : " [ANY]";
-              console.log(
-                `🟢 RESIDENTIAL${c} -> \x1b[32m${p.user}:${p.pass}@${ip}:${p.port}\x1b[0m`,
-              );
+              const country = p.country ? "[" + p.country + "]" : "[ANY]";
+              let line =
+                icon +
+                " " +
+                typeLabel +
+                country +
+                " \u2192 " +
+                p.user +
+                ":" +
+                p.pass +
+                "@" +
+                ip +
+                ":" +
+                p.port;
+              if (p.limit) {
+                const traffic = trackTraffic(p.port);
+                const usage = traffic.rx + traffic.tx;
+                const pct = Math.round((usage / p.limit) * 100);
+                if (health === "exhausted") {
+                  line += "  \u2716 LIMIT REACHED (" + formatBytes(p.limit) + ")";
+                } else {
+                  line += "  (" + pct + "% of " + formatBytes(p.limit) + ")";
+                }
+              }
+              console.log(line);
             } else if (p.type === "mtproto") {
               console.log(
-                `🟢 MTPROTO        -> \x1b[32mtg://proxy?server=${ip}&port=${p.port}&secret=${p.pass}\x1b[0m`,
+                icon +
+                  " " +
+                  typeLabel +
+                  " \u2192 tg://proxy?server=" +
+                  ip +
+                  "&port=" +
+                  p.port +
+                  "&secret=" +
+                  p.pass,
               );
             } else {
               console.log(
-                `🟢 ${p.type.toUpperCase().padEnd(14, " ")} -> \x1b[32m${p.user}:${p.pass}@${ip}:${p.port}\x1b[0m`,
+                icon +
+                  " " +
+                  typeLabel +
+                  " \u2192 " +
+                  p.user +
+                  ":" +
+                  p.pass +
+                  "@" +
+                  ip +
+                  ":" +
+                  p.port,
               );
             }
           });
         } else {
-          console.log("👥 No proxies configured.");
+          console.log("   No proxies configured.");
         }
-        console.log(
-          "══════════════════════════════════════════════════════════\n",
-        );
+        console.log(rule() + "\n");
         break;
       }
 
       case "status": {
-        console.log(`\n📊 PROXYFOXY STATUS & ANALYTICS`);
-        console.log(
-          `══════════════════════════════════════════════════════════`,
-        );
+        console.log("\n\ud83d\udcca ProxyFoxy \u2014 Status & Analytics");
+        console.log(rule());
 
         function portOrService(port, serviceName) {
           if (osInfo && osInfo.isServiceRunning(serviceName)) return true;
-          return runQuiet(`nc -z 127.0.0.1 ${port} 2>/dev/null`);
+          return runQuiet("nc -z 127.0.0.1 " + port + " 2>/dev/null");
         }
 
-        let squidStatus = portOrService(
-          db.proxies.find((p) => p.type === "http")?.port || 0,
+        var squidRunning = portOrService(
+          db.proxies.find(function (p) {
+            return p.type === "http";
+          })?.port || 0,
           "squid",
-        )
-          ? "🟢 RUNNING"
-          : "🔴 STOPPED";
-        let danteStatus = portOrService(
-          db.proxies.find((p) => p.type === "socks5")?.port || 0,
+        );
+        var squidStatus = squidRunning ? "\ud83d\udfe2 RUNNING" : "\ud83d\udd34 STOPPED";
+        var danteRunning = portOrService(
+          db.proxies.find(function (p) {
+            return p.type === "socks5";
+          })?.port || 0,
           osInfo?.isDebian ? "danted" : "sockd",
-        )
-          ? "🟢 RUNNING"
-          : "🔴 STOPPED";
-        let gatewayPort = db.proxies.find((p) => p.type === "residential")?.gatewayPort || 9000;
-        let masterStatus = portOrService(gatewayPort, "proxyfoxy-residential-master")
-          ? "🟢 RUNNING"
-          : "🔴 STOPPED";
+        );
+        var danteStatus = danteRunning ? "\ud83d\udfe2 RUNNING" : "\ud83d\udd34 STOPPED";
+        var gatewayPort =
+          db.proxies.find(function (p) {
+            return p.type === "residential";
+          })?.gatewayPort || 9000;
+        var masterRunning = portOrService(gatewayPort, "proxyfoxy-residential-master");
+        var masterStatus = masterRunning ? "\ud83d\udfe2 RUNNING" : "\ud83d\udd34 STOPPED";
 
-        const mtprotoProxies = db.proxies.filter((p) => p.type === "mtproto");
+        var mtprotoProxies = db.proxies.filter(function (p) {
+          return p.type === "mtproto";
+        });
 
-        console.log(`🛠️  CORE SERVICES:`);
-        console.log(`   ├─ HTTP (Squid):    ${squidStatus}`);
-        console.log(`   ├─ SOCKS5 (Dante):  ${danteStatus}`);
-        console.log(`   ├─ Master Gateway:  ${masterStatus}`);
+        console.log("\ud83d\udee0\ufe0f  Core Services:");
+        console.log("   \u251c\u2500 HTTP (Squid):    " + squidStatus);
+        console.log("   \u251c\u2500 SOCKS5 (Dante):  " + danteStatus);
+        console.log("   \u2514\u2500 Master Gateway:  " + masterStatus);
         if (mtprotoProxies.length > 0) {
-          mtprotoProxies.forEach((p, i) => {
-            const prefix = i < mtprotoProxies.length - 1 ? "├─" : "└─";
-            const mtgStatus = portOrService(p.port, `proxyfoxy-mtproto-${p.port}`)
-              ? "🟢 RUNNING"
-              : "🔴 STOPPED";
-            console.log(
-              `   ${prefix} MTProto :${p.port}  ${mtgStatus}`,
-            );
+          mtprotoProxies.forEach(function (p) {
+            var mtgRunning = portOrService(p.port, "proxyfoxy-mtproto-" + p.port);
+            var mtgStatus = mtgRunning ? "\ud83d\udfe2 RUNNING" : "\ud83d\udd34 STOPPED";
+            console.log("      \u2514\u2500 MTProto :" + p.port + "  " + mtgStatus);
           });
         }
         console.log();
 
-        console.log(`📈 TRAFFIC BY PORT:`);
+        console.log("\ud83d\udcc8 Traffic by Port:");
         if (db.proxies.length > 0) {
-          db.proxies.forEach((p) => {
-            const t = trackTraffic(p.port);
-            let limitStr = p.limit ? ` (Limit: ${formatBytes(p.limit)})` : "";
-            console.log(
-              `   ├─ Port ${p.port} [${p.type.toUpperCase()}]${limitStr}`,
-            );
-            console.log(
-              `   │  └─ Data: ${formatBytes(t.rx)} IN / ${formatBytes(t.tx)} OUT`,
-            );
+          db.proxies.forEach(function (p, idx) {
+            var t = trackTraffic(p.port);
+            var isLast = idx === db.proxies.length - 1;
+            var prefix = isLast ? "\u2514\u2500" : "\u251c\u2500";
+            console.log("   " + prefix + " Port " + p.port + " [" + p.type.toUpperCase() + "]");
+
+            var mid = isLast ? " " : "\u2502";
+            if (p.limit) {
+              var usage = t.rx + t.tx;
+              var pct = Math.min(Math.round((usage / p.limit) * 100), 100);
+              var bar = progressBar(usage, p.limit);
+              var statusText = pct >= 100 ? "\u2716 LIMIT REACHED" : pct + "%";
+              console.log(
+                "   " +
+                  mid +
+                  "  \u251c\u2500 Limit: [" +
+                  bar +
+                  "] " +
+                  formatBytes(usage) +
+                  " / " +
+                  formatBytes(p.limit) +
+                  " (" +
+                  statusText +
+                  ")",
+              );
+              console.log(
+                "   " +
+                  mid +
+                  "  \u2514\u2500 Data:  " +
+                  formatBytes(t.rx) +
+                  " IN / " +
+                  formatBytes(t.tx) +
+                  " OUT",
+              );
+            } else {
+              console.log(
+                "   " +
+                  mid +
+                  "  \u2514\u2500 Data: " +
+                  formatBytes(t.rx) +
+                  " IN / " +
+                  formatBytes(t.tx) +
+                  " OUT",
+              );
+            }
           });
         } else {
-          console.log(`   └─ No proxies configured.\n`);
+          console.log("   \u2514\u2500 No proxies configured.\n");
         }
 
-        let resState = [];
+        var resState = [];
         try {
           resState = JSON.parse(fs.readFileSync(STATE_PATH, "utf8"));
         } catch (e) {}
 
         if (resState.length > 0) {
-          console.log(`\n🏠 RESIDENTIAL PROVIDER POOL:`);
-          const byCountry = {};
-          let totalRx = 0,
+          console.log("\n\ud83c\udfe0 Residential Provider Pool:");
+          var byCountry = {};
+          var totalRx = 0,
             totalTx = 0;
-          resState.forEach((node) => {
-            if (!byCountry[node.country])
-              byCountry[node.country] = { nodes: [], rx: 0, tx: 0 };
+          resState.forEach(function (node) {
+            if (!byCountry[node.country]) byCountry[node.country] = { nodes: [], rx: 0, tx: 0 };
             byCountry[node.country].nodes.push(node);
             byCountry[node.country].rx += node.rx;
             byCountry[node.country].tx += node.tx;
@@ -1294,27 +1556,50 @@ function runProviderClient(host, port, quiet) {
             totalTx += node.tx;
           });
 
-          for (const [country, stats] of Object.entries(byCountry)) {
+          Object.entries(byCountry).forEach(function (entry) {
+            var country = entry[0],
+              stats = entry[1];
             console.log(
-              `   🌍 ${country}: ${stats.nodes.length} Node${stats.nodes.length > 1 ? "s" : ""} Active`,
+              "   \ud83c\udf0d " +
+                country +
+                ": " +
+                stats.nodes.length +
+                " Node" +
+                (stats.nodes.length > 1 ? "s" : "") +
+                " Active",
             );
-            stats.nodes.forEach((n, i) => {
-              const prefix = i < stats.nodes.length - 1 ? "├─" : "├─";
+            stats.nodes.forEach(function (n) {
               console.log(
-                `      ${prefix} ${n.ip} — ${formatBytes(n.rx)} IN / ${formatBytes(n.tx)} OUT`,
+                "      \u251c\u2500 " +
+                  n.ip +
+                  " \u2014 " +
+                  formatBytes(n.rx) +
+                  " IN / " +
+                  formatBytes(n.tx) +
+                  " OUT",
               );
             });
             console.log(
-              `      └─ Subtotal: ${formatBytes(stats.rx)} IN / ${formatBytes(stats.tx)} OUT`,
+              "      \u2514\u2500 Subtotal: " +
+                formatBytes(stats.rx) +
+                " IN / " +
+                formatBytes(stats.tx) +
+                " OUT",
             );
-          }
+          });
           console.log(
-            `\n   📊 Total: ${resState.length} Node${resState.length > 1 ? "s" : ""} — ${formatBytes(totalRx)} IN / ${formatBytes(totalTx)} OUT`,
+            "\n   \ud83d\udcca Total: " +
+              resState.length +
+              " Node" +
+              (resState.length > 1 ? "s" : "") +
+              " \u2014 " +
+              formatBytes(totalRx) +
+              " IN / " +
+              formatBytes(totalTx) +
+              " OUT",
           );
         }
-        console.log(
-          `══════════════════════════════════════════════════════════\n`,
-        );
+        console.log(rule() + "\n");
         break;
       }
 
@@ -1330,75 +1615,79 @@ function runProviderClient(host, port, quiet) {
 
         const types = [...new Set(toManage.map((p) => p.type))];
         if (types.includes("http")) osInfo.service(command, "squid");
-        if (types.includes("socks5"))
-          osInfo.service(command, osInfo.isDebian ? "danted" : "sockd");
-        if (types.includes("residential"))
-          osInfo.service(command, `proxyfoxy-residential-master`);
+        if (types.includes("socks5")) osInfo.service(command, osInfo.isDebian ? "danted" : "sockd");
+        if (types.includes("residential")) osInfo.service(command, `proxyfoxy-residential-master`);
         toManage.forEach((p) => {
-          if (p.type === "mtproto")
-            osInfo.service(command, `proxyfoxy-mtproto-${p.port}`);
+          if (p.type === "mtproto") osInfo.service(command, `proxyfoxy-mtproto-${p.port}`);
         });
 
         console.log(
-          `\n✅ Successfully executed '${command}' on requested services.\n`,
+          "\n\u2705 " + (command === "start" ? "Started" : "Stopped") + " requested services.\n",
         );
         break;
       }
 
       case "delete": {
         const [user, port] = args;
-        if (!user || !port)
-          return console.log("\n❌ Usage: proxyfoxy delete <user> <port>\n");
+        if (!user || !port) return console.log("\n\u274c Usage: proxyfoxy delete <user> <port>\n");
 
         validateUser(user);
-        validatePort(port);
+        const deletePort = validatePort(port);
 
-        const proxy = db.proxies.find((p) => p.port == port && p.user === user);
-        if (!proxy) return console.log("\n❌ Proxy not found in database.\n");
+        const proxy = db.proxies.find((p) => p.port == deletePort && p.user === user);
+        if (!proxy) return console.log("\n\u274c Proxy not found in database.\n");
 
-        if (osInfo) configureFirewall(port, osInfo, true);
+        if (osInfo) configureFirewall(deletePort, osInfo, true);
+
+        const remaining = db.proxies.filter((p) => p !== proxy);
 
         if (proxy.type === "http") {
-          runQuiet(`htpasswd -D /etc/squid/passwords ${shellEscape(user)}`);
-          runQuiet(`sed -i '/^http_port ${port}$/d' /etc/squid/squid.conf`);
+          if (!remaining.some((p) => p.type === "http" && p.user === user)) {
+            runQuiet(`htpasswd -D /etc/squid/passwords ${shellEscape(user)}`);
+          }
+          runQuiet(`sed -i '/^http_port ${deletePort}$/d' /etc/squid/squid.conf`);
           if (osInfo.isServiceRunning("squid"))
-            runQuiet(
-              osInfo.isAlpine
-                ? "squid -k reconfigure"
-                : "systemctl reload squid",
-            );
+            runQuiet(osInfo.isAlpine ? "squid -k reconfigure" : "systemctl reload squid");
           else osInfo.service("restart", "squid");
         } else if (proxy.type === "socks5") {
-          runQuiet(
-            osInfo.isAlpine
-              ? `deluser ${shellEscape(user)}`
-              : `userdel ${shellEscape(user)}`,
+          if (!remaining.some((p) => p.type === "socks5" && p.user === user)) {
+            runQuiet(
+              osInfo.isAlpine ? `deluser ${shellEscape(user)}` : `userdel ${shellEscape(user)}`,
+            );
+          }
+          writeDanteConfig(
+            osInfo,
+            remaining.filter((p) => p.type === "socks5"),
           );
           osInfo.service("restart", osInfo.isDebian ? "danted" : "sockd");
         } else if (proxy.type === "mtproto" || proxy.type === "residential") {
           const svcName =
             proxy.type === "mtproto"
-              ? `proxyfoxy-mtproto-${port}`
+              ? `proxyfoxy-mtproto-${deletePort}`
               : `proxyfoxy-residential-master`;
+          if (proxy.type === "residential" && remaining.some((p) => p.type === "residential")) {
+            db.proxies = remaining;
+            saveDb();
+            console.log("\n\u2705 Deleted " + proxy.type + " proxy on port " + deletePort + ".\n");
+            break;
+          }
           osInfo.service("stop", svcName);
           if (osInfo.isAlpine)
-            runQuiet(
-              `rc-update del ${svcName} default && rm -f /etc/init.d/${svcName}`,
-            );
+            runQuiet(`rc-update del ${svcName} default && rm -f /etc/init.d/${svcName}`);
           else
             runQuiet(
               `systemctl disable ${svcName} && rm -f /etc/systemd/system/${svcName}.service && systemctl daemon-reload`,
             );
         }
 
-        db.proxies = db.proxies.filter((p) => p !== proxy);
+        db.proxies = remaining;
         saveDb();
-        console.log(`\n✅ Deleted ${proxy.type} proxy on port ${port}.\n`);
+        console.log("\n\u2705 Deleted " + proxy.type + " proxy on port " + deletePort + ".\n");
         break;
       }
 
       case "uninstall": {
-        console.log("\n⚠️  Wiping ProxyFoxy from this machine completely...");
+        console.log("\n\u26a0\ufe0f  Removing ProxyFoxy...\n");
 
         // Stop base services
         osInfo.service("stop", "squid");
@@ -1413,9 +1702,7 @@ function runProviderClient(host, port, quiet) {
         if (fs.existsSync(STATE_PATH)) fs.unlinkSync(STATE_PATH);
 
         // Remove binaries and configs
-        runQuiet(
-          `rm -rf /etc/squid /etc/danted.conf /etc/sockd.conf /usr/local/bin/mtg`,
-        );
+        runQuiet(`rm -rf /etc/squid /etc/danted.conf /etc/sockd.conf /usr/local/bin/mtg`);
 
         // Remove individual service files
         if (osInfo.isAlpine) {
@@ -1423,21 +1710,18 @@ function runProviderClient(host, port, quiet) {
             `find /etc/init.d/ -name 'proxyfoxy-*' -exec rc-update del {} default \\; -exec rm -f {} \\;`,
           );
         } else {
-          runQuiet(
-            `systemctl disable squid danted proxyfoxy-residential-master 2>/dev/null`,
-          );
+          runQuiet(`systemctl disable squid danted proxyfoxy-residential-master 2>/dev/null`);
           runQuiet(
             `find /etc/systemd/system/ -name 'proxyfoxy-*.service' -delete && systemctl daemon-reload`,
           );
         }
 
-        console.log(`✅ Uninstallation successful. Your system is clean.\n`);
+        console.log("\u2705 Uninstallation complete. System is clean.\n");
         break;
       }
 
       default:
-        if (command && command !== "docker")
-          console.log(`\n❌ Unknown command: ${command}`);
+        if (command && command !== "docker") console.log("\n\u274c Unknown command: " + command);
         if (command !== "docker") printHelp();
 
         // Handle docker gracefully at bottom
@@ -1445,24 +1729,34 @@ function runProviderClient(host, port, quiet) {
           const [dUser, dPass, dPort, dProto] = args;
           if (!dUser || !dPass || !dPort) {
             console.log(
-              "\n❌ Usage: docker run ... proxyfoxy <user> <pass> <port> [protocol]\n",
+              "\n\u274c Usage: docker run ... proxyfoxy <user> <pass> <port> [protocol]\n",
             );
             process.exit(1);
           }
           validateUser(dUser);
-          validatePort(dPort);
+          const dockerPort = validatePort(dPort);
           const protocol = (dProto || "http").toLowerCase();
+          validateProtocol(protocol);
+          flags.gateway = validatePort(flags.gateway);
+          validateLimitFlag(
+            flags.limit,
+            rawArgs.find(function (a) {
+              return a.startsWith("--limit=");
+            }),
+          );
           console.log(
-            `\n🐳 Initializing Docker [${protocol.toUpperCase()}] -> Port: ${dPort}...\n`,
+            "\n\ud83d\udc33 Initializing Docker [" +
+              protocol.toUpperCase() +
+              "] \u2192 Port " +
+              dockerPort +
+              "...\n",
           );
 
           if (protocol === "http") {
             run("mkdir -p /etc/squid && touch /etc/squid/passwords");
+            run(`htpasswd -b -c /etc/squid/passwords ${shellEscape(dUser)} ${shellEscape(dPass)}`);
             run(
-              `htpasswd -b -c /etc/squid/passwords ${shellEscape(dUser)} ${shellEscape(dPass)}`,
-            );
-            run(
-              `sh -c 'AUTH_PATH=$(find /usr/lib/squid /usr/lib64/squid /usr/libexec/squid -name basic_ncsa_auth 2>/dev/null | head -n 1)\ncat <<EOF > /etc/squid/squid.conf\nhttp_port ${dPort}\nauth_param basic program $AUTH_PATH /etc/squid/passwords\nacl authenticated proxy_auth REQUIRED\nhttp_access allow authenticated\nhttp_access deny all\nEOF'`,
+              `sh -c 'AUTH_PATH=$(find /usr/lib/squid /usr/lib64/squid /usr/libexec/squid -name basic_ncsa_auth 2>/dev/null | head -n 1)\ncat <<EOF > /etc/squid/squid.conf\nhttp_port ${dockerPort}\nauth_param basic program $AUTH_PATH /etc/squid/passwords\nacl authenticated proxy_auth REQUIRED\nhttp_access allow authenticated\nhttp_access deny all\nEOF'`,
             );
             execSync("squid -N -d 1", { stdio: "inherit" });
           } else if (protocol === "socks5") {
@@ -1471,7 +1765,7 @@ function runProviderClient(host, port, quiet) {
             );
             fs.writeFileSync(
               "/etc/sockd.conf",
-              `logoutput: stderr\ninternal: 0.0.0.0 port = ${dPort}\nexternal: eth0\nsocksmethod: username\nclientmethod: none\nuser.privileged: root\nuser.unprivileged: nobody\nclient pass { from: 0.0.0.0/0 to: 0.0.0.0/0 }\nsocks pass { from: 0.0.0.0/0 to: 0.0.0.0/0 }\n`,
+              `logoutput: stderr\ninternal: 0.0.0.0 port = ${dockerPort}\nexternal: eth0\nsocksmethod: username\nclientmethod: none\nuser.privileged: root\nuser.unprivileged: nobody\nclient pass { from: 0.0.0.0/0 to: 0.0.0.0/0 }\nsocks pass { from: 0.0.0.0/0 to: 0.0.0.0/0 }\n`,
             );
             execSync("sockd -f /etc/sockd.conf", { stdio: "inherit" });
           } else if (protocol === "mtproto") {
@@ -1481,19 +1775,21 @@ function runProviderClient(host, port, quiet) {
               `wget -qO- https://github.com/9seconds/mtg/releases/download/v2.2.8/mtg-2.2.8-linux-${arch}.tar.gz | tar -xz -C /tmp && mv /tmp/mtg-*/mtg /usr/local/bin/mtg && chmod +x /usr/local/bin/mtg`,
             );
             require("child_process").execSync(
-              `/usr/local/bin/mtg run -b 0.0.0.0:${dPort} ${dPass}`,
+              `/usr/local/bin/mtg run -b 0.0.0.0:${dockerPort} ${dPass}`,
               { stdio: "inherit" },
             );
           } else if (protocol === "residential") {
-            db.proxies = db.proxies.filter((p) => p.port != dPort);
+            const providerToken = crypto.randomBytes(18).toString("base64url");
+            db.proxies = db.proxies.filter((p) => p.port != dockerPort);
             db.proxies.push({
               type: "residential",
               user: dUser,
               pass: dPass,
-              port: dPort,
+              port: dockerPort,
               country: flags.country,
               limit: flags.limit,
               gatewayPort: flags.gateway,
+              providerToken,
             });
             saveDb();
             serveResidentialMaster(flags.gateway);
@@ -1502,7 +1798,9 @@ function runProviderClient(host, port, quiet) {
     }
   } catch (error) {
     console.error(
-      "\n❌ An error occurred processing the command. Check privileges and network.\n",
+      "\n\u274c Error processing command: " +
+        (error && error.message ? error.message : "Check privileges and network.") +
+        "\n",
     );
   }
 })();

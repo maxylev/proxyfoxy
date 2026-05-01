@@ -16,6 +16,6 @@ RUN ARCH=$(uname -m) && \
     mv /tmp/mtg-*/mtg /usr/local/bin/mtg && chmod +x /usr/local/bin/mtg
 
 COPY e2e/ /e2e/
-RUN chmod +x /e2e/run.sh /e2e/tests/*.sh
+RUN chmod +x /e2e/*.sh /e2e/tests/*.sh
 
 ENTRYPOINT ["bash"]

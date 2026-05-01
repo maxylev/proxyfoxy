@@ -1,425 +1,801 @@
-const $ = (s) => document.querySelector(s);
-const $$ = (s) => document.querySelectorAll(s);
+const STORE_KEY = "proxyfoxy.v2";
 
-let proxies = [];
-let siteRules = {};
-let currentProxyId = null;
-let isConnected = false;
-let currentDomain = null;
-let sessionStart = null;
-let uploadBytes = 0;
-let downloadBytes = 0;
-let selectedProtocol = "http";
+const EMOJI_FLAGS = [
+  ["🇫🇷", "France"],
+  ["🇩🇪", "Germany"],
+  ["🇬🇧", "United Kingdom"],
+  ["🇺🇸", "United States"],
+  ["🇨🇦", "Canada"],
+  ["🇯🇵", "Japan"],
+  ["🇸🇬", "Singapore"],
+  ["🇳🇱", "Netherlands"],
+  ["🇸🇪", "Sweden"],
+  ["🇨🇭", "Switzerland"],
+  ["🇪🇸", "Spain"],
+  ["🇮🇹", "Italy"],
+  ["🇧🇷", "Brazil"],
+  ["🇦🇺", "Australia"],
+  ["🇰🇷", "South Korea"],
+  ["🇭🇰", "Hong Kong"],
+  ["🇮🇳", "India"],
+  ["🇲🇽", "Mexico"],
+  ["🇵🇱", "Poland"],
+  ["🇹🇷", "Turkey"],
+  ["🇦🇪", "UAE"],
+  ["🇿🇦", "South Africa"],
+].map(([e, n]) => ({ e, n }));
+const EMOJI_ANIMALS = [
+  ["🦊", "Fox"],
+  ["🐺", "Wolf"],
+  ["🦁", "Lion"],
+  ["🐯", "Tiger"],
+  ["🐻", "Bear"],
+  ["🐼", "Panda"],
+  ["🦅", "Eagle"],
+  ["🦉", "Owl"],
+].map(([e, n]) => ({ e, n }));
+const EMOJI_OBJECTS = [
+  ["🌐", "Global"],
+  ["🔒", "Secure"],
+  ["⚡", "Fast"],
+  ["🎯", "Target"],
+  ["🚀", "Rocket"],
+  ["💎", "Premium"],
+  ["🔥", "Fire"],
+  ["⭐", "Star"],
+].map(([e, n]) => ({ e, n }));
 
-// ─── Init ────────────────────────────────────────────────────────────
+const UA_PRESETS = [
+  { id: "current", label: "Current", ua: navigator.userAgent },
+  {
+    id: "chrome-win",
+    label: "Chrome · Win",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  },
+  {
+    id: "chrome-mac",
+    label: "Chrome · Mac",
+    ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  },
+  {
+    id: "safari-mac",
+    label: "Safari · Mac",
+    ua: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+  },
+  {
+    id: "firefox-win",
+    label: "Firefox · Win",
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:127.0) Gecko/20100101 Firefox/127.0",
+  },
+  {
+    id: "ios",
+    label: "iPhone",
+    ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+  },
+  {
+    id: "android",
+    label: "Android",
+    ua: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36",
+  },
+];
+const PRESETS = {
+  platform: [
+    ["Win32", "Windows"],
+    ["MacIntel", "macOS"],
+    ["Linux x86_64", "Linux"],
+    ["iPhone", "iPhone"],
+    ["Android", "Android"],
+  ],
+  resolution: [
+    ["1920x1080", "1920×1080"],
+    ["1366x768", "1366×768"],
+    ["1536x864", "1536×864"],
+    ["1440x900", "1440×900"],
+    ["390x844", "390×844"],
+  ],
+  language: [
+    ["en-US", "English (US)"],
+    ["en-GB", "English (UK)"],
+    ["fr-FR", "Français"],
+    ["de-DE", "Deutsch"],
+    ["es-ES", "Español"],
+    ["ja-JP", "日本語"],
+    ["zh-CN", "中文"],
+  ],
+  hardware: [
+    ["2", "2 cores"],
+    ["4", "4 cores"],
+    ["8", "8 cores"],
+    ["16", "16 cores"],
+  ],
+  memory: [
+    ["4", "4 GB"],
+    ["8", "8 GB"],
+    ["16", "16 GB"],
+    ["32", "32 GB"],
+  ],
+  colorDepth: [
+    ["24", "24-bit"],
+    ["30", "30-bit"],
+    ["32", "32-bit"],
+    ["48", "48-bit HDR"],
+  ],
+  pixelRatio: [
+    ["1", "1×"],
+    ["1.25", "1.25×"],
+    ["1.5", "1.5×"],
+    ["2", "2× Retina"],
+    ["3", "3× Mobile"],
+  ],
+  touch: [
+    ["0", "0 (Desktop)"],
+    ["1", "1"],
+    ["5", "5"],
+    ["10", "10 (Tablet)"],
+  ],
+  network: [
+    ["4g", "4G"],
+    ["3g", "3G"],
+    ["2g", "2G"],
+    ["slow-2g", "Slow 2G"],
+    ["wifi", "Wi-Fi"],
+  ],
+};
 
-async function init() {
-  const { theme } = await chrome.storage.local.get("theme");
-  applyTheme(theme || "dark");
-  await loadProxies();
-  await loadSiteRules();
-  await loadState();
-  detectCurrentSite();
-  renderProxies();
-  bindEvents();
-  startUptimeTimer();
+const DEFAULT_SETTINGS = {
+  theme: "dark",
+  reducedMotion: false,
+  autoConnect: false,
+  killSwitch: true,
+  canvasNoise: true,
+  audioNoise: true,
+  webglSpoof: true,
+  fontMask: true,
+  mathJitter: false,
+  plugins: true,
+  clientHints: true,
+  cpuSpoof: true,
+  memorySpoof: true,
+  batteryMask: true,
+  netInfo: true,
+  touchPoints: true,
+  screenRes: true,
+  colorDepth: true,
+  pixelRatio: true,
+  prefersScheme: false,
+  blockTrackers: true,
+  referrer: "strict",
+  dnt: false,
+  gpc: true,
+  permGeo: true,
+  permCam: true,
+  permMic: true,
+  permClip: true,
+  permDevices: true,
+};
+
+const $ = (id) => document.getElementById(id);
+const state = {
+  profiles: [],
+  activeId: null,
+  connected: false,
+  connecting: false,
+  stats: { upload: 0, download: 0 },
+  proxyIp: null,
+  actionIconTheme: "light",
+  settings: { ...DEFAULT_SETTINGS },
+};
+let editingId = null;
+let form = blankProfile();
+let statsTimer = null;
+const toolbarThemeQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
+
+function blankProfile() {
+  return {
+    emoji: "🦊",
+    name: "",
+    protocol: "socks5",
+    host: "",
+    port: "",
+    user: "",
+    pass: "",
+    activation: "all",
+    patterns: "",
+    pacUrl: "",
+    pacBody: "",
+    timezone: "proxy",
+    language: "en-US",
+    uaId: "current",
+    uaCustom: "",
+    platform: "Win32",
+    resolution: "1920x1080",
+    colorDepth: "24",
+    pixelRatio: "1",
+    touch: "0",
+    hardware: "8",
+    memory: "8",
+    network: "wifi",
+  };
 }
 
-function applyTheme(theme) {
-  document.documentElement.setAttribute("data-theme", theme);
+async function getStore() {
+  const data = await chrome.storage.local.get(STORE_KEY);
+  const stored = data[STORE_KEY] || {};
+  return {
+    profiles: [],
+    activeId: null,
+    connected: false,
+    stats: { upload: 0, download: 0 },
+    proxyIp: null,
+    actionIconTheme: browserToolbarTheme(),
+    ...stored,
+    settings: { ...DEFAULT_SETTINGS, ...(stored.settings || {}) },
+  };
 }
 
-// ─── Data Loaders ────────────────────────────────────────────────────
-
-async function loadProxies() {
-  const data = await chrome.storage.local.get("proxies");
-  proxies = data.proxies || [];
-}
-
-async function loadSiteRules() {
-  const data = await chrome.storage.local.get("siteRules");
-  siteRules = data.siteRules || {};
-}
-
-async function loadState() {
-  const state = await chrome.storage.local.get([
-    "activeProxyId",
-    "connected",
-    "sessionStart",
-    "uploadBytes",
-    "downloadBytes",
-    "lastProxyId",
-  ]);
-  if (state.activeProxyId) {
-    currentProxyId = state.activeProxyId;
-  } else if (state.lastProxyId) {
-    currentProxyId = state.lastProxyId;
-  }
-  isConnected = state.connected || false;
-  sessionStart = state.sessionStart || null;
-  uploadBytes = state.uploadBytes || 0;
-  downloadBytes = state.downloadBytes || 0;
-  updateUI();
-}
-
-async function saveState() {
+async function saveStore(patch = {}) {
+  Object.assign(state, patch);
   await chrome.storage.local.set({
-    activeProxyId: isConnected ? currentProxyId : null,
-    connected: isConnected,
-    sessionStart: sessionStart,
-    uploadBytes: uploadBytes,
-    downloadBytes: downloadBytes,
-    lastProxyId: currentProxyId,
+    [STORE_KEY]: {
+      profiles: state.profiles,
+      activeId: state.activeId,
+      connected: state.connected,
+      stats: state.stats,
+      proxyIp: state.proxyIp,
+      actionIconTheme: state.actionIconTheme,
+      settings: state.settings,
+    },
   });
 }
 
-// ─── Current Site Detection ──────────────────────────────────────────
-
-function detectCurrentSite() {
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs[0] && tabs[0].url) {
-      try {
-        const url = new URL(tabs[0].url);
-        if (url.protocol === "http:" || url.protocol === "https:") {
-          currentDomain = url.hostname;
-          $("#currentDomain").textContent = currentDomain;
-          updateSiteRuleUI();
-        }
-      } catch (e) {}
-    }
-  });
+function sendMessage(message) {
+  return new Promise((resolve) => chrome.runtime.sendMessage(message, (res) => resolve(res || {})));
 }
 
-function updateSiteRuleUI() {
-  const select = $("#siteRuleSelect");
-  select.innerHTML =
-    '<option value="">Use global proxy</option><option value="direct">Direct (no proxy)</option>';
-  proxies.forEach((p) => {
-    const opt = document.createElement("option");
-    opt.value = p.id;
-    opt.textContent = p.name + " (" + p.protocol.toUpperCase() + ")";
-    select.appendChild(opt);
-  });
-  if (currentDomain && siteRules[currentDomain]) {
-    select.value = siteRules[currentDomain];
-  }
+function browserToolbarTheme() {
+  return toolbarThemeQuery?.matches ? "dark" : "light";
 }
 
-// ─── Render ──────────────────────────────────────────────────────────
-
-function renderProxies() {
-  const select = $("#proxySelect");
-  select.innerHTML = '<option value="">No proxy (Direct)</option>';
-  proxies.forEach((p) => {
-    const opt = document.createElement("option");
-    opt.value = p.id;
-    opt.textContent = `${p.name} — ${p.protocol.toUpperCase()} (${p.host}:${p.port})`;
-    select.appendChild(opt);
-  });
-  if (currentProxyId) select.value = currentProxyId;
-  updateSiteRuleUI();
-  updateUI();
+async function syncActionIconTheme() {
+  const actionIconTheme = browserToolbarTheme();
+  await saveStore({ actionIconTheme });
+  await sendMessage({ type: "setActionIconTheme", theme: actionIconTheme });
 }
 
-// ─── UI Update ───────────────────────────────────────────────────────
-
-function updateUI() {
-  const ring = $("#ringProgress");
-  const ringGlow = $("#ringGlow");
-  const label = $("#statusLabel");
-  const ip = $("#statusIp");
-  const toggleBtn = $("#toggleBtn");
-  const indicator = $("#proxyIndicator");
-  const selector = $(".proxy-selector");
-
-  if (isConnected && currentProxyId) {
-    ring.className = "ring-progress connected";
-    ringGlow.classList.add("active");
-    label.textContent = "Connected";
-    label.className = "status-label status-connected";
-    toggleBtn.classList.add("on");
-    toggleBtn.disabled = false;
-    if (indicator) indicator.classList.add("active");
-    if (selector) selector.classList.add("active-proxy");
-
-    const proxy = proxies.find((p) => p.id === currentProxyId);
-    if (proxy) {
-      ip.textContent = proxy.host + ":" + proxy.port;
-      ip.title = proxy.host + ":" + proxy.port;
-    }
-    ip.classList.add("connected");
-
-    updateBadge("ON");
-    updateStats();
-  } else {
-    ring.className = currentProxyId ? "ring-progress off" : "ring-progress";
-    ringGlow.classList.remove("active");
-    label.textContent = "Disconnected";
-    label.className = "status-label status-disconnected";
-    ip.textContent = currentProxyId ? "Click to connect" : "Select a proxy";
-    ip.title = "";
-    ip.classList.remove("connected");
-    toggleBtn.classList.remove("on");
-    toggleBtn.disabled = !currentProxyId;
-    if (indicator) indicator.classList.remove("active");
-    if (selector) selector.classList.remove("active-proxy");
-    updateBadge("");
-  }
+function escapeHtml(value) {
+  return String(value || "").replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+  );
 }
-
-function updateBadge(text) {
-  chrome.action.setBadgeText({ text });
-  chrome.action.setBadgeBackgroundColor({
-    color: text === "ON" ? "#10b981" : "#6b7280",
-  });
-}
-
-// ─── Formatting ──────────────────────────────────────────────────────
 
 function formatBytes(bytes) {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+  if (!bytes) return "0 KB";
+  const units = ["B", "KB", "MB", "GB"];
+  let n = bytes,
+    i = 0;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i++;
+  }
+  return `${n.toFixed(i ? 1 : 0)} ${units[i]}`;
 }
 
-function formatUptime(ms) {
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return s + "s";
-  if (s < 3600) return Math.floor(s / 60) + "m " + (s % 60) + "s";
-  return Math.floor(s / 3600) + "h " + Math.floor((s % 3600) / 60) + "m";
+function parseProxyString(value) {
+  let s = String(value || "")
+    .trim()
+    .replace(/^(socks5|socks4|https?|residential):\/\//i, "");
+  if (!s) return null;
+  let m = s.match(/^([^:@\s]+):([^@\s]+)@(.+):(\d{1,5})$/);
+  if (m) return { user: m[1], pass: m[2], host: m[3], port: m[4] };
+  m = s.match(/^(.+):(\d{1,5}):([^:\s]+):(\S+)$/);
+  if (m) return { host: m[1], port: m[2], user: m[3], pass: m[4] };
+  m = s.match(/^(.+):(\d{1,5})$/);
+  return m ? { host: m[1], port: m[2], user: "", pass: "" } : null;
 }
 
-function updateStats() {
-  $("#statUploaded").textContent = formatBytes(uploadBytes);
-  $("#statDownloaded").textContent = formatBytes(downloadBytes);
-  if (sessionStart) {
-    $("#statUptime").textContent = formatUptime(Date.now() - sessionStart);
+function validateProfile(profile) {
+  const port = Number(profile.port);
+  if (!profile.name.trim()) return "Profile name is required.";
+  if (!profile.host.trim() && profile.activation !== "pac") return "Proxy host is required.";
+  if ((!Number.isInteger(port) || port < 1 || port > 65535) && profile.activation !== "pac")
+    return "Port must be between 1 and 65535.";
+  if (!/^(http|socks5|residential)$/.test(profile.protocol)) return "Unsupported protocol.";
+  if (profile.activation === "pac" && !profile.pacUrl.trim() && !profile.pacBody.trim())
+    return "PAC mode needs a PAC URL or inline PAC script.";
+  return null;
+}
+
+function profileProxyLabel(profile) {
+  if (!profile) return "Add or select a profile";
+  if (profile.activation === "pac")
+    return profile.pacUrl ? `PAC · ${profile.pacUrl}` : "PAC · inline script";
+  return `${profile.protocol} · ${profile.host}:${profile.port}`;
+}
+
+function setTheme(theme) {
+  state.settings.theme = theme;
+  document.documentElement.setAttribute("data-theme", theme);
+  document
+    .querySelectorAll("#themeToggleGroup button")
+    .forEach((button) => button.classList.toggle("active", button.dataset.theme === theme));
+  $("themeIcon").innerHTML =
+    theme === "dark"
+      ? '<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>'
+      : '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>';
+  saveStore().then(() => sendMessage({ type: "stateChanged" }));
+}
+
+function setConnectionUi(status) {
+  const map = {
+    idle: ["Disconnected", "Tap orb to connect", "Idle"],
+    connecting: ["Connecting…", "Negotiating tunnel", "Connecting"],
+    connected: [
+      "Connected",
+      state.proxyIp ? `Exit IP ${state.proxyIp}` : "Checking exit IP…",
+      "Online",
+    ],
+    error: ["Connection failed", "Tap to retry", "Error"],
+  };
+  $("app").dataset.state = status;
+  $("homeStatusValue").textContent = map[status][0];
+  $("homePillText").textContent = map[status][1];
+  $("topStatusText").textContent = map[status][2];
+  $("statPing").textContent = status === "connected" ? "live" : "— ms";
+}
+
+function renderHome() {
+  const profile = state.profiles.find((p) => p.id === state.activeId);
+  $("homeActiveEmoji").textContent = profile?.emoji || "🦊";
+  $("homeActiveName").textContent = profile?.name || "No profile";
+  $("homeActiveHost").textContent = profileProxyLabel(profile);
+  $("statUp").textContent = formatBytes(state.stats.upload);
+  $("statDown").textContent = formatBytes(state.stats.download);
+  setConnectionUi(state.connecting ? "connecting" : state.connected ? "connected" : "idle");
+}
+
+function renderProfiles() {
+  $("profileCount").textContent = `${state.profiles.length} saved`;
+  $("profileList").innerHTML = "";
+  if (!state.profiles.length) {
+    $("profileList").innerHTML =
+      '<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/></svg><p>No profiles yet.<br/>Tap <b>+ New</b> to create one.</p></div>';
+    return;
+  }
+  for (const profile of state.profiles) {
+    const activation = profile.activation || "all";
+    const count = String(profile.patterns || "")
+      .split(/\n+/)
+      .filter(Boolean).length;
+    const labels = {
+      all: "All sites",
+      include: `Include · ${count} rules`,
+      exclude: `Exclude · ${count} rules`,
+      pac: "PAC",
+    };
+    const card = document.createElement("div");
+    card.className = `profile-card${profile.id === state.activeId ? " active" : ""}`;
+    card.innerHTML = `<div class="profile-emoji">${escapeHtml(profile.emoji || "🦊")}</div><div class="profile-info"><div class="profile-name">${escapeHtml(profile.name || "Untitled")}</div><div class="profile-meta"><b>${escapeHtml(profile.protocol)}</b>${escapeHtml(profile.host || "—")}:${escapeHtml(profile.port || "")}</div><span class="profile-badge scope-${escapeHtml(activation)}">${escapeHtml(labels[activation] || labels.all)}</span></div><div class="profile-actions"><button class="icon-btn" data-act="edit" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button><button class="icon-btn" data-act="delete" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></div>`;
+    card.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-act]");
+      if (button?.dataset.act === "edit") return openModal(profile.id);
+      if (button?.dataset.act === "delete") return deleteProfile(profile.id);
+      await activateProfile(profile.id);
+      navigate("home");
+    });
+    $("profileList").appendChild(card);
   }
 }
 
-function startUptimeTimer() {
-  setInterval(() => {
-    if (isConnected && sessionStart) updateStats();
-    if (isConnected) {
-      chrome.runtime.sendMessage({ type: "getTrafficStats" }, (res) => {
-        if (res) {
-          uploadBytes = res.upload;
-          downloadBytes = res.download;
-          updateStats();
-        }
-      });
+function navigate(view) {
+  document
+    .querySelectorAll(".nav-item")
+    .forEach((button) => button.classList.toggle("active", button.dataset.nav === view));
+  document
+    .querySelectorAll(".view")
+    .forEach((panel) => panel.classList.toggle("active", panel.dataset.view === view));
+}
+
+function renderChips(containerId, items, key, customInputId) {
+  const container = $(containerId);
+  container.innerHTML = "";
+  for (const [id, label] of items) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `chip${form[key] === id ? " active" : ""}`;
+    button.textContent = label;
+    button.addEventListener("click", () => {
+      form[key] = id;
+      if (customInputId) $(customInputId).value = "";
+      renderAllChips();
+    });
+    container.appendChild(button);
+  }
+}
+
+function renderUaChips() {
+  $("uaChipGroup").innerHTML = "";
+  for (const preset of UA_PRESETS) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `chip${form.uaId === preset.id && !form.uaCustom ? " active" : ""}`;
+    button.textContent = preset.label;
+    button.addEventListener("click", () => {
+      form.uaId = preset.id;
+      form.uaCustom = "";
+      $("uaCustomInput").value = "";
+      renderAllChips();
+    });
+    $("uaChipGroup").appendChild(button);
+  }
+  const current =
+    form.uaCustom || UA_PRESETS.find((u) => u.id === form.uaId)?.ua || UA_PRESETS[0].ua;
+  $("uaCurrent").textContent = current;
+  $("uaActiveLabel").textContent = form.uaCustom
+    ? "custom"
+    : UA_PRESETS.find((u) => u.id === form.uaId)?.label.toLowerCase() || "current";
+}
+
+function renderAllChips() {
+  renderUaChips();
+  renderChips("platformChipGroup", PRESETS.platform, "platform", "platformCustomInput");
+  renderChips("resolutionChipGroup", PRESETS.resolution, "resolution", "resolutionCustomInput");
+  renderChips("languageChipGroup", PRESETS.language, "language", "languageCustomInput");
+  renderChips("hardwareChipGroup", PRESETS.hardware, "hardware", "hardwareCustomInput");
+  renderChips("memoryChipGroup", PRESETS.memory, "memory", "memoryCustomInput");
+  renderChips("colorDepthChipGroup", PRESETS.colorDepth, "colorDepth");
+  renderChips("pixelRatioChipGroup", PRESETS.pixelRatio, "pixelRatio");
+  renderChips("touchChipGroup", PRESETS.touch, "touch");
+  renderChips("networkChipGroup", PRESETS.network, "network");
+}
+
+function buildEmojiGrid(container, items) {
+  for (const item of items) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "emoji-cell";
+    button.textContent = item.e;
+    button.title = item.n;
+    button.addEventListener("click", () => {
+      form.emoji = item.e;
+      if (!$("profileNameInput").value.trim()) {
+        form.name = item.n;
+        $("profileNameInput").value = item.n;
+      }
+      $("emojiDisplay").textContent = item.e;
+      $("emojiGridWrap").classList.remove("open");
+      $("emojiDisplay").classList.remove("open");
+    });
+    container.appendChild(button);
+  }
+}
+
+function updateActivationUi() {
+  document
+    .querySelectorAll("#activationGroup button")
+    .forEach((button) =>
+      button.classList.toggle("active", button.dataset.value === form.activation),
+    );
+  $("patternsWrap").classList.toggle(
+    "open",
+    form.activation === "include" || form.activation === "exclude",
+  );
+  $("pacWrap").classList.toggle("open", form.activation === "pac");
+}
+
+function openModal(id) {
+  editingId = id || null;
+  form = {
+    ...blankProfile(),
+    ...(id ? state.profiles.find((p) => p.id === id) : {}),
+  };
+  $("modalTitle").textContent = id ? "Edit profile" : "New profile";
+  $("emojiDisplay").textContent = form.emoji;
+  $("profileNameInput").value = form.name;
+  $("quickPasteInput").value = "";
+  $("hostInput").value = form.host;
+  $("portInput").value = form.port;
+  $("userInput").value = form.user;
+  $("passInput").value = form.pass;
+  $("patternsInput").value = form.patterns || "";
+  $("pacUrlInput").value = form.pacUrl || "";
+  $("pacBodyInput").value = form.pacBody || "";
+  $("uaCustomInput").value = form.uaCustom || "";
+  for (const [key, inputId] of [
+    ["language", "languageCustomInput"],
+    ["platform", "platformCustomInput"],
+    ["resolution", "resolutionCustomInput"],
+    ["hardware", "hardwareCustomInput"],
+    ["memory", "memoryCustomInput"],
+  ]) {
+    const preset = PRESETS[key].some(([id]) => id === form[key]);
+    $(inputId).value = preset ? "" : form[key];
+  }
+  document
+    .querySelectorAll("#protocolGroup button")
+    .forEach((button) => button.classList.toggle("active", button.dataset.value === form.protocol));
+  document
+    .querySelectorAll("#timezoneGroup button")
+    .forEach((button) => button.classList.toggle("active", button.dataset.value === form.timezone));
+  updateActivationUi();
+  renderAllChips();
+  $("profileModal").classList.add("open");
+}
+
+function closeModal() {
+  $("profileModal").classList.remove("open");
+}
+
+async function saveProfile() {
+  const error = validateProfile(form);
+  if (error) {
+    const target = !form.name.trim()
+      ? $("profileNameInput")
+      : !form.host.trim()
+        ? $("hostInput")
+        : $("portInput");
+    target.classList.add("invalid");
+    setTimeout(() => target.classList.remove("invalid"), 1200);
+    return;
+  }
+  if (editingId) {
+    state.profiles = state.profiles.map((p) => (p.id === editingId ? { ...p, ...form } : p));
+  } else {
+    const id = `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    state.profiles.push({ id, ...form });
+    if (!state.activeId) state.activeId = id;
+  }
+  await saveStore();
+  await sendMessage({ type: "stateChanged" });
+  renderProfiles();
+  renderHome();
+  closeModal();
+}
+
+async function activateProfile(id) {
+  state.activeId = id;
+  await saveStore();
+  if (state.connected)
+    await sendMessage({
+      type: "connect",
+      profile: state.profiles.find((p) => p.id === id),
+      settings: state.settings,
+    });
+  renderProfiles();
+  renderHome();
+}
+
+async function deleteProfile(id) {
+  const wasActive = state.activeId === id;
+  state.profiles = state.profiles.filter((p) => p.id !== id);
+  if (wasActive) state.activeId = state.profiles[0]?.id || null;
+  await saveStore({ connected: wasActive ? false : state.connected });
+  if (wasActive) await sendMessage({ type: "disconnect" });
+  renderProfiles();
+  renderHome();
+}
+
+async function toggleConnection() {
+  if (state.connecting) return;
+  const profile = state.profiles.find((p) => p.id === state.activeId);
+  if (!profile) return navigate("profiles");
+  if (state.connected) {
+    await sendMessage({ type: "disconnect" });
+    await saveStore({ connected: false, stats: { upload: 0, download: 0 }, proxyIp: null });
+    renderHome();
+    return;
+  }
+  state.connecting = true;
+  renderHome();
+  const response = await sendMessage({
+    type: "connect",
+    profile,
+    settings: state.settings,
+  });
+  state.connecting = false;
+  if (response.ok) {
+    await saveStore({
+      connected: true,
+      stats: { upload: 0, download: 0 },
+      proxyIp: response.proxyIp || null,
+    });
+    startStatsPolling();
+  } else {
+    setConnectionUi("error");
+    setTimeout(renderHome, 1400);
+  }
+  renderHome();
+}
+
+function startStatsPolling() {
+  if (statsTimer) clearInterval(statsTimer);
+  statsTimer = setInterval(async () => {
+    if (!state.connected) return;
+    const res = await sendMessage({ type: "getStats" });
+    if (res.stats) {
+      state.stats = res.stats;
+      state.proxyIp = res.proxyIp || state.proxyIp;
+      $("statUp").textContent = formatBytes(state.stats.upload);
+      $("statDown").textContent = formatBytes(state.stats.download);
+      renderHome();
     }
   }, 1000);
 }
 
-// ─── Connect / Disconnect ────────────────────────────────────────────
-
-async function connect() {
-  const proxy = proxies.find((p) => p.id === currentProxyId);
-  if (!proxy) return;
-  isConnected = true;
-  sessionStart = Date.now();
-  uploadBytes = 0;
-  downloadBytes = 0;
-  updateUI();
-  await saveState();
-
-  chrome.runtime.sendMessage(
-    { type: "connect", proxy: proxy, siteRules: siteRules },
-    (response) => {
-      if (response && response.ip) {
-        $("#statusIp").textContent = response.ip;
-        $("#statusIp").title = response.ip;
+function bindInputs() {
+  for (const [id, key] of [
+    ["profileNameInput", "name"],
+    ["hostInput", "host"],
+    ["portInput", "port"],
+    ["userInput", "user"],
+    ["passInput", "pass"],
+    ["patternsInput", "patterns"],
+    ["pacUrlInput", "pacUrl"],
+    ["pacBodyInput", "pacBody"],
+    ["uaCustomInput", "uaCustom"],
+  ]) {
+    $(id).addEventListener("input", (e) => {
+      form[key] =
+        key === "port" || key === "host" || key === "pacUrl"
+          ? e.target.value.trim()
+          : e.target.value;
+      if (key === "uaCustom" && form.uaCustom.trim()) {
+        form.uaId = "custom";
+        renderUaChips();
       }
-    },
+    });
+  }
+  for (const [id, key] of [
+    ["languageCustomInput", "language"],
+    ["platformCustomInput", "platform"],
+    ["resolutionCustomInput", "resolution"],
+    ["hardwareCustomInput", "hardware"],
+    ["memoryCustomInput", "memory"],
+  ]) {
+    $(id).addEventListener("input", (e) => {
+      if (e.target.value.trim()) {
+        form[key] = e.target.value.trim();
+        renderAllChips();
+      }
+    });
+  }
+  $("quickPasteInput").addEventListener("input", (e) => {
+    const parsed = parseProxyString(e.target.value);
+    $("quickPasteWrap").classList.toggle("parsed", !!parsed);
+    if (!parsed) return;
+    Object.assign(form, parsed);
+    $("hostInput").value = form.host;
+    $("portInput").value = form.port;
+    $("userInput").value = form.user;
+    $("passInput").value = form.pass;
+  });
+  $("protocolGroup").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-value]");
+    if (b) {
+      form.protocol = b.dataset.value;
+      document
+        .querySelectorAll("#protocolGroup button")
+        .forEach((x) => x.classList.toggle("active", x === b));
+    }
+  });
+  $("activationGroup").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-value]");
+    if (b) {
+      form.activation = b.dataset.value;
+      updateActivationUi();
+    }
+  });
+  $("timezoneGroup").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-value]");
+    if (b) {
+      form.timezone = b.dataset.value;
+      document
+        .querySelectorAll("#timezoneGroup button")
+        .forEach((x) => x.classList.toggle("active", x === b));
+    }
+  });
+}
+
+function bindSettings() {
+  document.querySelectorAll("[data-group]").forEach((group) => {
+    const count = group.querySelectorAll(".settings-row").length;
+    const badge = group.querySelector(".gh-count");
+    if (badge) badge.textContent = String(count);
+  });
+  document
+    .querySelectorAll("[data-group] .settings-group-head")
+    .forEach((head) =>
+      head.addEventListener("click", () => head.parentElement.classList.toggle("open")),
+    );
+  document.querySelectorAll(".switch[data-key]").forEach((sw) => {
+    const key = sw.dataset.key;
+    sw.classList.toggle(
+      "on",
+      key === "referrer" ? state.settings.referrer === "no-referrer" : !!state.settings[key],
+    );
+    sw.addEventListener("click", async () => {
+      if (key === "referrer") {
+        state.settings.referrer =
+          state.settings.referrer === "no-referrer" ? "strict" : "no-referrer";
+        sw.classList.toggle("on", state.settings.referrer === "no-referrer");
+      } else {
+        state.settings[key] = !state.settings[key];
+        sw.classList.toggle("on", state.settings[key]);
+      }
+      await saveStore();
+      if (state.connected)
+        await sendMessage({
+          type: "connect",
+          profile: state.profiles.find((p) => p.id === state.activeId),
+          settings: state.settings,
+        });
+    });
+  });
+  document.querySelectorAll(".settings-control-mini").forEach((group) => {
+    const key = group.dataset.key;
+    group
+      .querySelectorAll("button")
+      .forEach((b) => b.classList.toggle("active", state.settings[key] === b.dataset.value));
+    group.addEventListener("click", async (e) => {
+      const b = e.target.closest("button[data-value]");
+      if (!b) return;
+      state.settings[key] = b.dataset.value;
+      group.querySelectorAll("button").forEach((x) => x.classList.toggle("active", x === b));
+      await saveStore();
+    });
+  });
+}
+
+async function init() {
+  Object.assign(state, await getStore());
+  const bg = await sendMessage({ type: "getState" });
+  if (bg.connected !== undefined) state.connected = bg.connected;
+  if (bg.stats) state.stats = bg.stats;
+  if (bg.proxyIp) state.proxyIp = bg.proxyIp;
+  await syncActionIconTheme();
+  setTheme(state.settings.theme || "dark");
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz) $("tzSystemLabel").textContent = `System · ${tz.split("/").pop().replace(/_/g, " ")}`;
+  } catch {}
+  buildEmojiGrid($("emojiGridFlags"), EMOJI_FLAGS);
+  buildEmojiGrid($("emojiGridAnimals"), EMOJI_ANIMALS);
+  buildEmojiGrid($("emojiGridObjects"), EMOJI_OBJECTS);
+  bindInputs();
+  bindSettings();
+  document
+    .querySelectorAll(".nav-item")
+    .forEach((b) => b.addEventListener("click", () => navigate(b.dataset.nav)));
+  $("themeQuickToggle").addEventListener("click", () =>
+    setTheme(state.settings.theme === "dark" ? "light" : "dark"),
   );
-}
-
-async function disconnect() {
-  isConnected = false;
-  sessionStart = null;
-  updateUI();
-  await saveState();
-  chrome.runtime.sendMessage({ type: "disconnect" });
-}
-
-// ─── Toast ───────────────────────────────────────────────────────────
-
-function showToast(msg) {
-  const toast = $("#toast");
-  toast.textContent = msg;
-  toast.classList.add("show");
-  setTimeout(() => toast.classList.remove("show"), 2000);
-}
-
-// ─── Smart Paste: Parse user:pass@host:port ──────────────────────────
-
-function parseProxyString(str) {
-  str = str.trim();
-  let username = "",
-    password = "",
-    host = "",
-    port = "";
-
-  // Match user:pass@host:port
-  const atMatch = str.match(/^(.+?):(.+?)@(.+)$/);
-  if (atMatch) {
-    username = atMatch[1];
-    password = atMatch[2];
-    const rest = atMatch[3];
-    const portMatch = rest.match(/^(.+?):(\d+)$/);
-    if (portMatch) {
-      host = portMatch[1];
-      port = portMatch[2];
-    } else {
-      host = rest;
-    }
-  } else {
-    // Match host:port
-    const portMatch = str.match(/^(.+?):(\d+)$/);
-    if (portMatch) {
-      host = portMatch[1];
-      port = portMatch[2];
-    } else {
-      host = str;
-    }
-  }
-
-  return { username, password, host, port };
-}
-
-function applyParsedProxy(parsed) {
-  if (parsed.host) $("#proxyHost").value = parsed.host;
-  if (parsed.port) $("#proxyPort").value = parsed.port;
-  if (parsed.username) $("#proxyUser").value = parsed.username;
-  if (parsed.password) $("#proxyPass").value = parsed.password;
-
-  // Auto-detect residential protocol if username starts with "res_"
-  if (parsed.username && parsed.username.startsWith("res_")) {
-    $$(".pill").forEach((p) => p.classList.remove("active"));
-    const resPill = document.querySelector('.pill[data-proto="residential"]');
-    if (resPill) {
-      resPill.classList.add("active");
-      selectedProtocol = "residential";
-    }
-  }
-}
-
-// ─── Event Bindings ──────────────────────────────────────────────────
-
-function bindEvents() {
-  // Proxy selector change
-  $("#proxySelect").addEventListener("change", async (e) => {
-    const prevConnected = isConnected;
-    if (isConnected) await disconnect();
-    currentProxyId = e.target.value || null;
-    await saveState();
-    if (prevConnected && currentProxyId) await connect();
-    updateUI();
+  $("themeToggleGroup").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-theme]");
+    if (b) setTheme(b.dataset.theme);
   });
-
-  // Power button toggle
-  $("#toggleBtn").addEventListener("click", () => {
-    if (isConnected) disconnect();
-    else connect();
+  toolbarThemeQuery?.addEventListener?.("change", syncActionIconTheme);
+  $("homeChangeBtn").addEventListener("click", () => navigate("profiles"));
+  $("connectOrb").addEventListener("click", toggleConnection);
+  $("addProfileBtn").addEventListener("click", () => openModal());
+  $("cancelBtn").addEventListener("click", closeModal);
+  $("closeModalBtn").addEventListener("click", closeModal);
+  $("saveBtn").addEventListener("click", saveProfile);
+  $("emojiDisplay").addEventListener("click", () => {
+    const open = $("emojiGridWrap").classList.toggle("open");
+    $("emojiDisplay").classList.toggle("open", open);
   });
-
-  // Settings button → opens options page in new tab
-  $("#settingsBtn").addEventListener("click", () => {
-    chrome.runtime.openOptionsPage();
-  });
-
-  // Add Proxy button → open modal
-  $("#addProxyBtn").addEventListener("click", () => {
-    $("#modalOverlay").style.display = "flex";
-    $("#proxyQuickPaste").focus();
-  });
-
-  // Modal close
-  $("#modalClose").addEventListener("click", () => {
-    $("#modalOverlay").style.display = "none";
-  });
-  $("#modalOverlay").addEventListener("click", (e) => {
-    if (e.target === $("#modalOverlay")) {
-      $("#modalOverlay").style.display = "none";
+  $("customEmojiApply").addEventListener("click", () => {
+    const value = $("customEmojiInput").value.trim();
+    if (value) {
+      form.emoji = value;
+      $("emojiDisplay").textContent = value;
+      $("customEmojiInput").value = "";
+      $("emojiGridWrap").classList.remove("open");
     }
   });
-
-  // Protocol pills
-  $$(".pill").forEach((pill) => {
-    pill.addEventListener("click", () => {
-      $$(".pill").forEach((p) => p.classList.remove("active"));
-      pill.classList.add("active");
-      selectedProtocol = pill.dataset.proto;
-    });
-  });
-
-  // ─── Smart Paste: Quick Add field ──────────────────────────────
-  $("#proxyQuickPaste").addEventListener("input", (e) => {
-    const val = e.target.value.trim();
-    if (val.length < 3) return;
-    const parsed = parseProxyString(val);
-    if (parsed.host) applyParsedProxy(parsed);
-  });
-
-  // ─── Smart Paste: paste into individual fields ─────────────────
-  ["#proxyHost", "#proxyPort", "#proxyUser", "#proxyPass"].forEach((sel) => {
-    $(sel).addEventListener("paste", (e) => {
-      const val = (e.clipboardData || window.clipboardData).getData("text");
-      const parsed = parseProxyString(val);
-      if (parsed.host && (parsed.port || parsed.username)) {
-        e.preventDefault();
-        applyParsedProxy(parsed);
-      }
-    });
-  });
-
-  // ─── Add Proxy Form Submit ─────────────────────────────────────
-  $("#addProxyForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const proxy = {
-      id: "p_" + Date.now(),
-      name: $("#proxyName").value.trim() || "Unnamed",
-      protocol: selectedProtocol,
-      host: $("#proxyHost").value.trim(),
-      port: parseInt($("#proxyPort").value),
-      username: $("#proxyUser").value.trim(),
-      password: $("#proxyPass").value.trim(),
-    };
-    if (!proxy.host || !proxy.port) return;
-
-    proxies.push(proxy);
-    currentProxyId = proxy.id;
-    await chrome.storage.local.set({ proxies });
-    renderProxies();
-    await saveState();
-    $("#modalOverlay").style.display = "none";
-    $("#addProxyForm").reset();
-    $$(".pill").forEach((p) => p.classList.remove("active"));
-    $$(".pill")[0].classList.add("active");
-    selectedProtocol = "http";
-    showToast("Proxy added: " + proxy.name);
-  });
-
-  // Manage button
-  $("#manageBtn").addEventListener("click", () => {
-    chrome.runtime.openOptionsPage();
-  });
-
-  // Site rule change
-  $("#siteRuleSelect").addEventListener("change", async (e) => {
-    if (!currentDomain) return;
-    const val = e.target.value;
-    if (val) siteRules[currentDomain] = val;
-    else delete siteRules[currentDomain];
-    await chrome.storage.local.set({ siteRules });
-    if (isConnected) {
-      chrome.runtime.sendMessage({ type: "updateSiteRules", siteRules });
-    }
-    showToast(val ? "Rule set for " + currentDomain : "Rule removed");
-  });
+  renderProfiles();
+  renderHome();
+  if (state.connected) startStatsPolling();
 }
 
 init();

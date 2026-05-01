@@ -4,32 +4,32 @@ proxyfoxy add stat_user stat_pass 8090 http > /dev/null 2>&1 || true
 sleep 2
 
 curl -s -o /dev/null --max-time 10 \
-    -x http://stat_user:stat_pass@127.0.0.1:8090 https://icanhazip.com > /dev/null 2>&1 || true
+  -x http://stat_user:stat_pass@127.0.0.1:8090 https://icanhazip.com > /dev/null 2>&1 || true
 
 STATUS_OUT=$(proxyfoxy status 2>&1) || true
 
 if echo "$STATUS_OUT" | grep -q "Port 8090"; then
-    pass "status lists port 8090"
+  pass "status lists port 8090"
 else
-    fail "status lists port 8090"
+  fail "status lists port 8090"
 fi
 
 if echo "$STATUS_OUT" | grep -q "HTTP"; then
-    pass "status shows HTTP protocol label"
+  pass "status shows HTTP protocol label"
 else
-    fail "status shows HTTP protocol label"
+  fail "status shows HTTP protocol label"
 fi
 
-if echo "$STATUS_OUT" | grep -q "TRAFFIC"; then
-    pass "status shows traffic section"
+if echo "$STATUS_OUT" | grep -q "Traffic"; then
+  pass "status shows traffic section"
 else
-    fail "status shows traffic section"
+  fail "status shows traffic section"
 fi
 
 if echo "$STATUS_OUT" | grep -q "Squid"; then
-    pass "status reports squid service state"
+  pass "status reports squid service state"
 else
-    fail "status reports squid service state"
+  fail "status reports squid service state"
 fi
 
 proxyfoxy delete stat_user 8090 > /dev/null 2>&1 || true

@@ -7,17 +7,5 @@ services:
     networks:
       - proxyfoxy
     command: ["/e2e/run.sh"]
-
-  provider:
-    build:
-      context: ..
-      dockerfile: e2e/Dockerfile.e2e
-    depends_on:
-      server:
-        condition: service_started
-    networks:
-      - proxyfoxy
-    entrypoint: ["proxyfoxy", "provider", "server:9000", "--quiet"]
-
 networks:
   proxyfoxy:

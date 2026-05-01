@@ -1,12 +1,21 @@
 {
   "name": "proxyfoxy",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "description": "Distributed Multi-Protocol Proxy Manager with Residential Node Networking",
   "bin": {
     "proxyfoxy": "./index.js"
   },
   "scripts": {
-    "test": "node test.js"
+    "prepare": "command -v husky >/dev/null 2>&1 && husky || true",
+    "format": "prettier --write \"**/*.{js,json,md,yml,yaml,css,html,sh}\"",
+    "format:check": "prettier --check \"**/*.{js,json,md,yml,yaml,css,html,sh}\"",
+    "test": "node tests/sanity.test.js",
+    "test:e2e": "docker compose --project-directory e2e -f e2e/docker-compose.yml up --build --abort-on-container-exit",
+    "test:e2e:residential": "docker compose --project-directory e2e -f e2e/docker-compose.two-container.yml up --build --abort-on-container-exit",
+    "test:browser": "docker compose --project-directory e2e -f e2e/docker-compose.browser.yml up --build -d && node tests/browser-extension-e2e.js"
+  },
+  "lint-staged": {
+    "*.{js,json,md,yml,yaml,css,html,sh}": "prettier --write"
   },
   "repository": {
     "type": "git",
@@ -26,5 +35,11 @@
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.2",
+    "prettier": "^3.5.3",
+    "prettier-plugin-sh": "^0.14.0"
   }
 }

@@ -1,4 +1,4 @@
-name: E2E Tests
+name: Tests
 
 on:
   push:
@@ -7,16 +7,43 @@ on:
     branches: ["main"]
 
 jobs:
-  e2e:
-    name: Proxy E2E Tests
+  quality:
+    name: Format and Node Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.x"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Run Node tests
+        run: npm test
+
+  e2e:
+    name: Proxy E2E Tests
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
 
       - name: Run E2E suite
-        run: cd e2e && docker compose up --build --abort-on-container-exit
+        run: npm run test:e2e
+
+      - name: Run two-container residential suite
+        run: npm run test:e2e:residential
 
       - name: Logs (on failure)
         if: failure()
-        run: cd e2e && docker compose logs
+        run: |
+          docker compose --project-directory e2e -f e2e/docker-compose.yml logs || true
+          docker compose --project-directory e2e -f e2e/docker-compose.two-container.yml logs || true

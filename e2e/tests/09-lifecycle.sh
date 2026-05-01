@@ -12,12 +12,12 @@ echo "$LIST_OUT" | grep -q "lc_user" && pass "list shows username" || fail "list
 assert_exit "stop http proxy" proxyfoxy stop http
 sleep 1
 assert_fail "http proxy rejects after stop" \
-    curl -s -o /dev/null --max-time 5 -x http://lc_user:lc_pass@127.0.0.1:8094 https://icanhazip.com
+  curl -s -o /dev/null --max-time 5 -x http://lc_user:lc_pass@127.0.0.1:8094 https://icanhazip.com
 
 assert_exit "start http proxy" proxyfoxy start http
 sleep 2
 assert_http "http proxy works after start" "200" \
-    -x http://lc_user:lc_pass@127.0.0.1:8094 https://icanhazip.com
+  -x http://lc_user:lc_pass@127.0.0.1:8094 https://icanhazip.com
 
 proxyfoxy delete lc_user 8094 > /dev/null 2>&1 || true
 proxyfoxy delete lc_sock 8095 > /dev/null 2>&1 || true
@@ -25,12 +25,15 @@ proxyfoxy delete lc_sock 8095 > /dev/null 2>&1 || true
 section "Input Validation"
 
 assert_fail "reject shell injection in username" \
-    proxyfoxy 'add' 'user;rm -rf /' 'pass' 8096
+  proxyfoxy 'add' 'user;rm -rf /' 'pass' 8096
 
 assert_fail "reject non-numeric port" \
-    proxyfoxy 'add' 'user' 'pass' 'abc'
+  proxyfoxy 'add' 'user' 'pass' 'abc'
+
+assert_fail "reject shell-like port" \
+  proxyfoxy 'add' 'user' 'pass' '8096;touch /tmp/proxyfoxy-bad'
 
 assert_fail "reject out-of-range port" \
-    proxyfoxy 'add' 'user' 'pass' 99999
+  proxyfoxy 'add' 'user' 'pass' 99999
 
 pass "input validation complete"

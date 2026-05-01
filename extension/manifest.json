@@ -1,13 +1,33 @@
 {
   "manifest_version": 3,
   "name": "ProxyFoxy",
-  "version": "1.1.0",
-  "description": "The ultimate proxy manager — HTTP, SOCKS5, and Residential proxies with per-site routing.",
-  "permissions": ["proxy", "storage", "webRequest", "webRequestAuthProvider", "tabs", "alarms"],
+  "version": "1.3.4",
+  "description": "Profile-based proxy routing for HTTP, SOCKS5, and residential proxies.",
+  "permissions": [
+    "proxy",
+    "storage",
+    "webRequest",
+    "webRequestAuthProvider",
+    "declarativeNetRequest",
+    "tabs"
+  ],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
   },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["page.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
@@ -17,7 +37,6 @@
       "128": "icons/icon128.png"
     }
   },
-  "options_page": "options.html",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
